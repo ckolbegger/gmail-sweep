@@ -54,7 +54,7 @@ Terminal (OpenTUI)  or  Web (React)
 | GET | `/auth/status` | `{ authenticated: bool, email: string }` |
 | DELETE | `/auth/logout` | Revokes and removes stored token |
 
-Authentication uses OAuth2 browser flow. User clicks a link, browser opens Google's consent screen, token stored locally.
+Authentication uses OAuth2 browser flow. User clicks a link, browser opens Google's consent screen, token stored locally in `~/.gmail-sweep/tokens.json`.
 
 ### Emails
 
@@ -63,7 +63,7 @@ Authentication uses OAuth2 browser flow. User clicks a link, browser opens Googl
 | GET | `/emails` | List from local DB (paginated) |
 | GET | `/emails/:id` | Full email (plain + HTML body) |
 | GET | `/emails/:id/summary` | AI summary (cached in DB) |
-| POST | `/emails/:id/archive` | Apply Archive label via Gmail API |
+| POST | `/emails/:id/archive` | Remove INBOX label via Gmail API (Gmail's archive) |
 | POST | `/emails/:id/delete` | Move to Trash via Gmail API |
 
 `GET /emails` supports query parameters: `?sender=&date_from=&date_to=&subject=`
@@ -283,7 +283,7 @@ Each extraction strategy is a named, versioned pipeline (e.g., `"v1-plain"`, `"v
 
 The `embedding_strategy` column on the emails table tracks which strategy produced each embedding. When the active strategy changes, emails with a mismatched strategy are considered stale and re-embedded on next sync or on-demand.
 
-**A/B trials:** The `email_embeddings` table supports multiple embeddings per email (keyed by `email_id` + `strategy`). To trial a new extraction prompt:
+**A/B trials:** The `email_embeddings` table supports multiple embeddings per email (keyed by `email_id` + `strategy`). Note: sqlite-vec `vec0` may not support composite primary keys — if so, use a synthetic key or a separate virtual table per strategy. To trial a new extraction prompt:
 
 1. Run strategy A on a batch of emails
 2. Switch to strategy B, re-embed the same batch
@@ -460,8 +460,14 @@ interface LLMConfig {
   model: string;
   apiKey?: string;
   baseUrl?: string;        // for Ollama / LMStudio
-  embeddingModel?: string;
-  embeddingDimension?: number;
+}
+
+interface EmbeddingConfig {
+  provider: 'openai' | 'openai-compatible';  // Anthropic has no embedding models
+  model: string;
+  apiKey?: string;
+  baseUrl?: string;        // for Ollama / LMStudio
+  dimension: number;
 }
 ```
 
@@ -474,9 +480,13 @@ All configuration stored in `~/.gmail-sweep/config.json`:
   "llm": {
     "provider": "anthropic",
     "model": "claude-sonnet-4-6",
+    "apiKey": "sk-..."
+  },
+  "embedding": {
+    "provider": "openai",
+    "model": "text-embedding-3-small",
     "apiKey": "sk-...",
-    "embeddingModel": "text-embedding-3-small",
-    "embeddingDimension": 1536
+    "dimension": 1536
   },
   "sync": {
     "defaultBatchSize": 500
