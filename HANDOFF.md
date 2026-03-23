@@ -66,6 +66,15 @@ Terminal (OpenTUI)  or  Web (React + Vite)
 - [x] Design spec written and reviewed: `docs/superpowers/specs/2026-03-23-gmail-sweep-design.md`
 - [x] Backend implementation plan written and reviewed: `docs/superpowers/plans/2026-03-23-gmail-sweep-backend.md`
 
+## Starting a New Session
+
+**Start Claude Code from this directory** (`~/src/gmail-sweep/worktrees/claude`), not from the project root. The implementation plan uses relative paths like `packages/backend/src/...` — those paths are relative to this worktree directory. Starting from the project root would create files on the wrong branch.
+
+```bash
+cd ~/src/gmail-sweep/worktrees/claude
+claude
+```
+
 ## What's Next: Execute Plan 1 (Backend)
 
 **The next step is to execute the backend plan.** Use the `superpowers:executing-plans` or `superpowers:subagent-driven-development` skill.
@@ -87,7 +96,7 @@ The plan covers 12 tasks in order:
 11. REST routes (auth, emails, sync, search, config)
 12. Integration smoke test
 
-**All code goes into `worktrees/claude/`** (i.e., the files created will be at paths like `worktrees/claude/packages/backend/src/...`). Commits go to the `claude` branch.
+**All code uses paths relative to this worktree directory** (e.g., `packages/backend/src/...` resolves to `~/src/gmail-sweep/worktrees/claude/packages/backend/src/...`). Commits go to the `claude` branch.
 
 ## Plans 2 and 3 (Not Yet Written)
 
