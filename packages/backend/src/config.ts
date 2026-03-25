@@ -45,15 +45,20 @@ export function getDefaultConfig(): AppConfig {
 export async function loadConfig(): Promise<AppConfig> {
   const configPath = getConfigPath();
 
+  let config: AppConfig;
   try {
     const raw = await fs.readFile(configPath, 'utf-8');
-    return JSON.parse(raw) as AppConfig;
+    config = JSON.parse(raw) as AppConfig;
   } catch {
     // File doesn't exist — create with defaults
-    const defaults = getDefaultConfig();
-    await saveConfig(defaults);
-    return defaults;
+    config = getDefaultConfig();
+    await saveConfig(config);
   }
+
+  if (process.env.GOOGLE_CLIENT_ID) config.google.clientId = process.env.GOOGLE_CLIENT_ID;
+  if (process.env.GOOGLE_CLIENT_SECRET) config.google.clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+  return config;
 }
 
 export async function saveConfig(config: AppConfig): Promise<void> {

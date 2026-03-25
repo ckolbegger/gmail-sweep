@@ -15,15 +15,16 @@ export async function syncRoutes(
   const { db, gmail, embed, config, defaultBatchSize } = options;
 
   app.post('/sync', async (request) => {
-    const body = request.body as { batchSize?: number } | undefined;
+    const body = request.body as { batchSize?: number; skipEmbeddings?: boolean } | undefined;
     const batchSize = body?.batchSize ?? defaultBatchSize;
+    const skipEmbeddings = body?.skipEmbeddings ?? false;
 
     const syncResult = await runSyncCycle(db, gmail, { batchSize });
 
     const { activeStrategy, strategies } = config.contentExtraction;
     const strategy = strategies[activeStrategy];
     let embeddingsGenerated = 0;
-    if (strategy) {
+    if (!skipEmbeddings && strategy) {
       embeddingsGenerated = await generatePendingEmbeddings(db, embed, activeStrategy, strategy, EMBEDDING_BATCH_SIZE);
     }
 

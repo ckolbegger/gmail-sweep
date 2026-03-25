@@ -164,7 +164,7 @@ export function createGmailService(clientId: string, clientSecret: string, redir
     async fetchMessagesBefore(date, maxResults) {
       await loadTokens();
       const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-      const before = Math.floor(new Date(date).getTime() / 1000);
+      const before = Math.floor(new Date(date).getTime() / 1000) - 1;
       const query = `before:${before}`;
 
       const listRes = await gmail.users.messages.list({ userId: 'me', q: query, maxResults });

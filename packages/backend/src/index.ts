@@ -1,6 +1,6 @@
 import { buildServer } from './server.js';
 
-const app = buildServer();
+const app = await buildServer();
 
 try {
   await app.listen({ port: 3141, host: '127.0.0.1' });
