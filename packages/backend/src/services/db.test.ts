@@ -1,0 +1,113 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import { createDb, type DbHandle } from './db.js';
+
+describe('database service', () => {
+  let db: DbHandle;
+
+  beforeEach(() => {
+    db = createDb(':memory:');
+  });
+
+  describe('emails', () => {
+    it('inserts and retrieves an email', () => {
+      db.upsertEmail({
+        id: 'msg1',
+        threadId: 'thread1',
+        subject: 'Test email',
+        from: 'alice@example.com',
+        date: '2026-03-23T10:00:00Z',
+        snippet: 'Hello world',
+        bodyText: 'Hello world, this is a test email.',
+        bodyHtml: null,
+        labels: ['INBOX'],
+        summary: null,
+        hasEmbedding: false,
+        embeddingStrategy: null,
+      });
+
+      const email = db.getEmail('msg1');
+      expect(email).not.toBeNull();
+      expect(email!.subject).toBe('Test email');
+      expect(email!.from).toBe('alice@example.com');
+      expect(email!.labels).toEqual(['INBOX']);
+    });
+
+    it('lists emails sorted by date descending', () => {
+      db.upsertEmail({ id: 'old', threadId: 't1', subject: 'Old', from: 'a@b.com',
+        date: '2026-01-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: [], summary: null, hasEmbedding: false, embeddingStrategy: null });
+      db.upsertEmail({ id: 'new', threadId: 't2', subject: 'New', from: 'a@b.com',
+        date: '2026-03-23T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: [], summary: null, hasEmbedding: false, embeddingStrategy: null });
+
+      const emails = db.listEmails({});
+      expect(emails[0].id).toBe('new');
+      expect(emails[1].id).toBe('old');
+    });
+
+    it('filters emails by sender', () => {
+      db.upsertEmail({ id: 'a', threadId: 't1', subject: 'S', from: 'alice@example.com',
+        date: '2026-03-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: [], summary: null, hasEmbedding: false, embeddingStrategy: null });
+      db.upsertEmail({ id: 'b', threadId: 't2', subject: 'S', from: 'bob@example.com',
+        date: '2026-03-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: [], summary: null, hasEmbedding: false, embeddingStrategy: null });
+
+      const results = db.listEmails({ sender: 'alice' });
+      expect(results).toHaveLength(1);
+      expect(results[0].id).toBe('a');
+    });
+
+    it('updates summary on existing email', () => {
+      db.upsertEmail({ id: 'msg1', threadId: 't1', subject: 'S', from: 'a@b.com',
+        date: '2026-03-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: [], summary: null, hasEmbedding: false, embeddingStrategy: null });
+
+      db.updateSummary('msg1', { description: 'A test', actionItems: [], keyPoints: [] });
+
+      const email = db.getEmail('msg1');
+      expect(email!.summary).toEqual({ description: 'A test', actionItems: [], keyPoints: [] });
+    });
+  });
+
+  describe('sync state', () => {
+    it('returns null state when no sync has occurred', () => {
+      const state = db.getSyncState();
+      expect(state.totalSynced).toBe(0);
+      expect(state.newestDate).toBeNull();
+      expect(state.oldestDate).toBeNull();
+    });
+
+    it('updates sync state', () => {
+      db.updateSyncState({ newestDate: '2026-03-23T00:00:00Z', oldestDate: '2026-01-01T00:00:00Z', totalSynced: 100 });
+      const state = db.getSyncState();
+      expect(state.totalSynced).toBe(100);
+      expect(state.newestDate).toBe('2026-03-23T00:00:00Z');
+    });
+  });
+
+  describe('gap management', () => {
+    it('creates and lists gaps', () => {
+      db.createGap({ newerBoundary: '2026-03-20T00:00:00Z', olderBoundary: '2026-03-15T00:00:00Z', estimatedCount: 200 });
+      const gaps = db.listGaps();
+      expect(gaps).toHaveLength(1);
+      expect(gaps[0].estimatedCount).toBe(200);
+    });
+
+    it('deletes a gap when fully filled', () => {
+      db.createGap({ newerBoundary: '2026-03-20T00:00:00Z', olderBoundary: '2026-03-15T00:00:00Z', estimatedCount: 200 });
+      const [gap] = db.listGaps();
+      db.deleteGap(gap.id);
+      expect(db.listGaps()).toHaveLength(0);
+    });
+
+    it('updates gap boundaries when partially filled', () => {
+      db.createGap({ newerBoundary: '2026-03-20T00:00:00Z', olderBoundary: '2026-03-10T00:00:00Z', estimatedCount: 500 });
+      const [gap] = db.listGaps();
+      db.updateGapBoundary(gap.id, { olderBoundary: '2026-03-15T00:00:00Z', estimatedCount: 250 });
+      const updated = db.listGaps()[0];
+      expect(updated.olderBoundary).toBe('2026-03-15T00:00:00Z');
+      expect(updated.estimatedCount).toBe(250);
+    });
+  });
+});
