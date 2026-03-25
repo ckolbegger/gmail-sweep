@@ -128,7 +128,7 @@ export function App() {
     }
   }
 
-  const bindings = useMemo(() => view !== 'inbox' ? {} : ({
+  const bindings = useMemo(() => view !== 'inbox' ? ({} as Record<string, () => void>) : ({
     j: () => setSelectedIndex(i => Math.min(i + 1, emails.length - 1)),
     k: () => setSelectedIndex(i => Math.max(i - 1, 0)),
     ArrowDown: () => setSelectedIndex(i => Math.min(i + 1, emails.length - 1)),
