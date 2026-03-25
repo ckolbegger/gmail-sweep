@@ -65,7 +65,7 @@ export function buildInboxView(renderer: any) {
       const item = new TextRenderable(renderer, { id: `list-item-${i}`, content: line });
       item.width = '100%';
       if (selected) {
-        item.backgroundColor = '#1a5276';
+        item.bg = '#1a5276';
       }
       listScroll.add(item);
     });
