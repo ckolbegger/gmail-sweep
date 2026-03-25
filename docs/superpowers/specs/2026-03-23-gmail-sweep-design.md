@@ -182,7 +182,7 @@ Config stored in `~/.gmail-sweep/config.json`. LLM providers:
 - **OpenAI-compatible** — Ollama, LMStudio (custom base URL)
 
 Embedding providers:
-- **local** — `@huggingface/transformers` in-process (default: `Xenova/bge-small-en-v1.5`, 384d)
+- **local** — `@huggingface/transformers` in-process (default: `Xenova/bge-m3`, 1024d, 8K context)
 - **openai-compatible** — any `/v1/embeddings` endpoint (LMStudio, Ollama)
 
 ## 3. Database Schema
@@ -252,7 +252,7 @@ CREATE TABLE email_embeddings (
 );
 ```
 
-Embedding dimension is set by `config.embedding.dimension` (default: 384 for `Xenova/bge-small-en-v1.5`). Changing the dimension requires re-embedding all emails — change the `activeStrategy` name to trigger this automatically.
+Embedding dimension is set by `config.embedding.dimension` (default: 1024 for `Xenova/bge-m3`). Changing the dimension requires re-embedding all emails — change the `activeStrategy` name to trigger this automatically.
 
 Query example:
 ```sql
@@ -323,14 +323,14 @@ Summaries are generated on first view and cached in the DB. Never re-generated u
 
 sqlite-vec uses brute-force (flat) vector search — it compares the query vector against every stored vector linearly.
 
-Default model: `Xenova/bge-small-en-v1.5` (384 dimensions, float32).
+Default model: `Xenova/bge-m3` (1024 dimensions, float32, 8K token context).
 
-| Emails | Embedding storage (384d) | Vector search time |
-|--------|--------------------------|-------------------|
-| 10k | ~15 MB | ~5-10ms |
-| 100k | ~150 MB | ~30-80ms |
-| 500k | ~750 MB | ~200-500ms |
-| 1M | ~1.5 GB | ~500ms-1s |
+| Emails | Embedding storage (1024d) | Vector search time |
+|--------|---------------------------|-------------------|
+| 10k | ~40 MB | ~5-10ms |
+| 100k | ~400 MB | ~30-80ms |
+| 500k | ~2 GB | ~200-500ms |
+| 1M | ~4 GB | ~500ms-1s |
 
 Using a larger model via `openai-compatible` (e.g. 1536d): multiply storage by 4×, search times by ~3-4×.
 
@@ -485,10 +485,9 @@ interface EmbeddingConfig {
 
 // provider: 'local'
 //   Uses @huggingface/transformers to run the model in-process via ONNX Runtime.
-//   No API key, no network calls after first run. Model files (~80MB for bge-small-en-v1.5)
-//   are downloaded once and cached by the runtime.
-//   BGE models apply a query prefix ("Represent this sentence for searching relevant passages: ")
-//   when embedding search queries, but not when embedding stored documents.
+//   No API key, no network calls after first run. Model files (~560MB FP32 / ~140MB quantized
+//   for bge-m3) are downloaded once and cached by the runtime.
+//   BGE-M3 uses symmetric embedding — no query prefix is applied for queries or documents.
 //
 // provider: 'openai-compatible'
 //   Calls any OpenAI-compatible /v1/embeddings endpoint (LMStudio, Ollama, etc.).
@@ -509,8 +508,8 @@ All configuration stored in `~/.gmail-sweep/config.json`:
   },
   "embedding": {
     "provider": "local",
-    "model": "Xenova/bge-small-en-v1.5",
-    "dimension": 384
+    "model": "Xenova/bge-m3",
+    "dimension": 1024
   },
   // To use LMStudio or Ollama instead:
   // "embedding": {

@@ -531,8 +531,8 @@ export function getDefaultConfig(): AppConfig {
     },
     embedding: {
       provider: 'local',
-      model: 'Xenova/bge-small-en-v1.5',
-      dimension: 384,
+      model: 'Xenova/bge-m3',
+      dimension: 1024,
     },
     sync: {
       defaultBatchSize: 500,
@@ -1358,10 +1358,10 @@ git commit -m "feat: AI service for summarization and query parsing"
 
 Two providers, same interface:
 
-- **`local`** — runs the model in-process via `@huggingface/transformers` (ONNX Runtime). Model files downloaded once, cached by the runtime. BGE models apply a query prefix when embedding search queries but not stored documents.
+- **`local`** — runs the model in-process via `@huggingface/transformers` (ONNX Runtime). Model files downloaded once, cached by the runtime. BGE-M3 uses symmetric embedding — no query prefix for either queries or documents.
 - **`openai-compatible`** — calls any `/v1/embeddings` endpoint (LMStudio, Ollama). No query prefix applied; the serving endpoint handles model-specific behaviour.
 
-`embedDocument` is used when storing email vectors. `embedQuery` is used for search queries. They differ only in the BGE query prefix for the `local` provider.
+`embedDocument` is used when storing email vectors. `embedQuery` is used for search queries. For BGE-M3 (and the `openai-compatible` provider) both are identical — the interface keeps them separate in case a future model requires asymmetric embedding.
 
 - [ ] **Step 1: Write failing tests**
 
@@ -1372,7 +1372,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('@huggingface/transformers', () => ({
   pipeline: vi.fn().mockResolvedValue(
-    vi.fn().mockResolvedValue({ data: new Float32Array(384).fill(0.1) })
+    vi.fn().mockResolvedValue({ data: new Float32Array(1024).fill(0.1) })
   ),
 }));
 
@@ -1393,47 +1393,34 @@ describe('embed service', () => {
   describe('local provider', () => {
     const config: EmbeddingConfig = {
       provider: 'local',
-      model: 'Xenova/bge-small-en-v1.5',
-      dimension: 384,
+      model: 'Xenova/bge-m3',
+      dimension: 1024,
     };
 
-    it('embedDocument returns a 384-element float array', async () => {
+    it('embedDocument returns a 1024-element float array', async () => {
       const svc = createEmbedService(config);
       const vec = await svc.embedDocument('Subject: Hello\n\nTest body');
       expect(Array.isArray(vec)).toBe(true);
-      expect(vec).toHaveLength(384);
+      expect(vec).toHaveLength(1024);
     });
 
-    it('embedQuery returns a 384-element float array', async () => {
+    it('embedQuery returns a 1024-element float array', async () => {
       const svc = createEmbedService(config);
       const vec = await svc.embedQuery('emails about project deadlines');
       expect(Array.isArray(vec)).toBe(true);
-      expect(vec).toHaveLength(384);
+      expect(vec).toHaveLength(1024);
     });
 
-    it('embedQuery prepends the BGE query prefix', async () => {
+    it('embedQuery passes text directly without any prefix', async () => {
       const { pipeline } = await import('@huggingface/transformers');
-      const mockExtractor = vi.fn().mockResolvedValue({ data: new Float32Array(384).fill(0.1) });
+      const mockExtractor = vi.fn().mockResolvedValue({ data: new Float32Array(1024).fill(0.1) });
       vi.mocked(pipeline).mockResolvedValueOnce(mockExtractor as any);
 
       const svc = createEmbedService(config);
       await svc.embedQuery('project deadline');
 
       const callArg = (mockExtractor.mock.calls[0] as [string])[0];
-      expect(callArg).toMatch(/^Represent this sentence/);
-      expect(callArg).toContain('project deadline');
-    });
-
-    it('embedDocument does NOT prepend a query prefix', async () => {
-      const { pipeline } = await import('@huggingface/transformers');
-      const mockExtractor = vi.fn().mockResolvedValue({ data: new Float32Array(384).fill(0.1) });
-      vi.mocked(pipeline).mockResolvedValueOnce(mockExtractor as any);
-
-      const svc = createEmbedService(config);
-      await svc.embedDocument('Subject: Hello\n\nBody text');
-
-      const callArg = (mockExtractor.mock.calls[0] as [string])[0];
-      expect(callArg).toBe('Subject: Hello\n\nBody text');
+      expect(callArg).toBe('project deadline');
     });
   });
 
@@ -1485,10 +1472,6 @@ Expected: FAIL — `createEmbedService` not found
 import OpenAI from 'openai';
 import type { EmbeddingConfig } from '@gmail-sweep/shared';
 
-// BGE retrieval models are trained with asymmetric query/document embeddings.
-// Queries get this prefix; stored documents do not.
-const BGE_QUERY_PREFIX = 'Represent this sentence for searching relevant passages: ';
-
 export interface EmbedService {
   embedDocument(text: string): Promise<number[]>;
   embedQuery(text: string): Promise<number[]>;
@@ -1528,9 +1511,10 @@ async function embedApi(config: EmbeddingConfig, text: string): Promise<number[]
 
 export function createEmbedService(config: EmbeddingConfig): EmbedService {
   if (config.provider === 'local') {
+    // BGE-M3 uses symmetric embedding — no query prefix needed.
     return {
       embedDocument: (text) => embedLocal(config.model, text),
-      embedQuery: (text) => embedLocal(config.model, BGE_QUERY_PREFIX + text),
+      embedQuery: (text) => embedLocal(config.model, text),
     };
   }
   // openai-compatible: no query prefix — the serving endpoint handles model-specific behaviour
@@ -2144,7 +2128,7 @@ describe('search service', () => {
     };
     mockEmbed = {
       embedDocument: vi.fn(),
-      embedQuery: vi.fn().mockResolvedValue(new Array(384).fill(0.1)),
+      embedQuery: vi.fn().mockResolvedValue(new Array(1024).fill(0.1)),
     };
   });
 
@@ -2327,7 +2311,7 @@ describe('generatePendingEmbeddings', () => {
   beforeEach(() => {
     db = createDb(':memory:');
     mockEmbed = {
-      embedDocument: vi.fn().mockResolvedValue(new Array(384).fill(0.5)),
+      embedDocument: vi.fn().mockResolvedValue(new Array(1024).fill(0.5)),
       embedQuery: vi.fn(),
     };
   });
@@ -2469,7 +2453,7 @@ vi.mock('../config.js', () => ({
   loadConfig: vi.fn().mockResolvedValue({
     google: { clientId: 'id', clientSecret: 'secret', redirectUri: 'http://localhost:3141/auth/callback' },
     llm: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
-    embedding: { provider: 'local', model: 'Xenova/bge-small-en-v1.5', dimension: 384 },
+    embedding: { provider: 'local', model: 'Xenova/bge-m3', dimension: 1024 },
     sync: { defaultBatchSize: 500 },
     contentExtraction: { activeStrategy: 'v1-plain', strategies: {} },
   }),
@@ -2512,7 +2496,7 @@ vi.mock('../config.js', () => ({
   loadConfig: vi.fn().mockResolvedValue({
     google: { clientId: 'id', clientSecret: 'secret', redirectUri: 'http://localhost:3141/auth/callback' },
     llm: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
-    embedding: { provider: 'local', model: 'Xenova/bge-small-en-v1.5', dimension: 384 },
+    embedding: { provider: 'local', model: 'Xenova/bge-m3', dimension: 1024 },
     sync: { defaultBatchSize: 500 },
     contentExtraction: { activeStrategy: 'v1-plain', strategies: { 'v1-plain': { type: 'template', template: 'Subject: {{subject}}\n\n{{body_text}}' } } },
   }),
