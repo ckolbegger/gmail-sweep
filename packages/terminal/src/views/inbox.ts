@@ -14,7 +14,9 @@ export function buildInboxView(renderer: any) {
     titleAlignment: 'left',
   });
   listPane.flexGrow = 1;
+  listPane.flexShrink = 1;
   listPane.height = '100%';
+  listPane.overflow = 'hidden';
 
   const listScroll = new ScrollBoxRenderable(renderer, { id: 'list-scroll', scrollY: true });
   listScroll.width = '100%';
@@ -27,8 +29,10 @@ export function buildInboxView(renderer: any) {
     title: ' Preview  [Tab: toggle summary/full text] ',
     titleAlignment: 'left',
   });
-  previewPane.flexGrow = 2;
+  previewPane.width = '40%';
+  previewPane.flexShrink = 0;
   previewPane.height = '100%';
+  previewPane.overflow = 'hidden';
 
   const previewText = new TextRenderable(renderer, { id: 'preview-text', content: '' });
   previewText.width = '100%';
@@ -71,7 +75,7 @@ export function buildInboxView(renderer: any) {
     });
 
     if (state.emails.length > 0) {
-      listScroll.scrollChildIntoView(`list-item-${state.selectedIndex}`);
+      setTimeout(() => listScroll.scrollChildIntoView(`list-item-${state.selectedIndex}`), 0);
     }
   }
 
@@ -82,11 +86,12 @@ export function buildInboxView(renderer: any) {
       return;
     }
 
+    const w = 55;
     const header = [
-      `Subject: ${email.subject}`,
-      `From:    ${email.from}`,
-      `Date:    ${email.date}`,
-      `Labels:  ${email.labels.join(', ')}`,
+      truncate(`Subject: ${email.subject}`, w),
+      truncate(`From:    ${email.from}`, w),
+      truncate(`Date:    ${email.date}`, w),
+      truncate(`Labels:  ${email.labels.join(', ')}`, w),
       '',
     ];
 
