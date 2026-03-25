@@ -44,7 +44,8 @@ describe('embed service', () => {
     it('embedQuery passes text directly without any prefix', async () => {
       const { pipeline } = await import('@huggingface/transformers');
       const mockExtractor = vi.fn().mockResolvedValue({ data: new Float32Array(1024).fill(0.1) });
-      vi.mocked(pipeline).mockResolvedValueOnce(mockExtractor as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(pipeline as any).mockResolvedValueOnce(mockExtractor);
 
       const svc = createEmbedService(config);
       await svc.embedQuery('project deadline');

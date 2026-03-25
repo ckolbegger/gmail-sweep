@@ -13,7 +13,7 @@ type Extractor = (...args: unknown[]) => Promise<{ data: Float32Array }>;
 async function loadExtractor(model: string): Promise<Extractor> {
   console.log(`Loading local embedding model: ${model} (first run downloads model files, then cached)`);
   const { pipeline } = await import('@huggingface/transformers');
-  return (await pipeline('feature-extraction', model)) as Extractor;
+  return (await pipeline('feature-extraction', model)) as unknown as Extractor;
 }
 
 // --- OpenAI-compatible provider ---
