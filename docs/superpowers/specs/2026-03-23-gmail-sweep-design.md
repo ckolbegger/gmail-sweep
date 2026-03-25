@@ -17,7 +17,8 @@ gmail-sweep/
           gmail.ts          ← Gmail API + OAuth2
           sync.ts           ← Cursor-based sync with gap management
           db.ts             ← SQLite + sqlite-vec
-          ai.ts             ← Provider-agnostic LLM
+          ai.ts             ← Provider-agnostic LLM (summarize, query parsing)
+          embed.ts          ← Embedding provider (local Transformers.js or openai-compatible)
           search.ts         ← Vector + filter search
           content.ts        ← Configurable email content extraction
     terminal/               ← OpenTUI client
@@ -37,10 +38,11 @@ gmail-sweep/
 Terminal (OpenTUI)  or  Web (React)
         ↓ HTTP / REST
   Backend (Fastify :3141)
-    ├── SQLite DB       (emails, labels, sync cursor, gaps)
-    ├── sqlite-vec      (embeddings, vector search)
-    ├── Gmail API       (OAuth2, sync, archive, delete)
-    └── LLM Provider    (Anthropic / OpenAI / Ollama / LMStudio)
+    ├── SQLite DB           (emails, labels, sync cursor, gaps)
+    ├── sqlite-vec          (vector search)
+    ├── Gmail API           (OAuth2, sync, archive, delete)
+    ├── LLM Provider        (Anthropic / OpenAI / Ollama / LMStudio)
+    └── Embedding Provider  (local: @huggingface/transformers, or openai-compatible endpoint)
 ```
 
 ## 2. Backend API
@@ -171,13 +173,17 @@ Fast column filtering narrows the candidate set, then semantic ranking finds the
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/config` | Current LLM provider config |
-| POST | `/config` | Update provider, model, API key, base URL |
+| GET | `/config` | Current app config |
+| POST | `/config` | Update LLM or embedding provider, model, base URL |
 
-Provider config stored in `~/.gmail-sweep/config.json`. Supports:
+Config stored in `~/.gmail-sweep/config.json`. LLM providers:
 - **Anthropic** — Claude models
-- **OpenAI** — GPT-4o, text-embedding-3-small/large
+- **OpenAI** — GPT-4o etc.
 - **OpenAI-compatible** — Ollama, LMStudio (custom base URL)
+
+Embedding providers:
+- **local** — `@huggingface/transformers` in-process (default: `Xenova/bge-small-en-v1.5`, 384d)
+- **openai-compatible** — any `/v1/embeddings` endpoint (LMStudio, Ollama)
 
 ## 3. Database Schema
 
@@ -232,18 +238,21 @@ CREATE TABLE sync_gaps (
 CREATE INDEX idx_gaps_boundaries ON sync_gaps(newer_boundary, older_boundary);
 ```
 
-### email_embeddings (sqlite-vec)
+### email_embeddings
 
 ```sql
-CREATE VIRTUAL TABLE email_embeddings
-  USING vec0(
-    email_id TEXT PRIMARY KEY,
-    strategy TEXT,                    -- extraction strategy ID
-    embedding FLOAT[1536]            -- dimension matches model
-  );
+-- Stored as a regular table with BLOB vectors (not a vec0 virtual table)
+-- because vec0 does not support composite primary keys.
+-- vec_distance_cosine() operates on BLOB float arrays directly.
+CREATE TABLE email_embeddings (
+  email_id  TEXT NOT NULL,
+  strategy  TEXT NOT NULL,           -- extraction strategy ID
+  vector    BLOB NOT NULL,           -- float32 LE array, dimension matches config.embedding.dimension
+  PRIMARY KEY (email_id, strategy)
+);
 ```
 
-Embedding dimension is configurable per provider. OpenAI text-embedding-3-small = 1536. Ollama models vary.
+Embedding dimension is set by `config.embedding.dimension` (default: 384 for `Xenova/bge-small-en-v1.5`). Changing the dimension requires re-embedding all emails — change the `activeStrategy` name to trigger this automatically.
 
 Query example:
 ```sql
@@ -314,12 +323,16 @@ Summaries are generated on first view and cached in the DB. Never re-generated u
 
 sqlite-vec uses brute-force (flat) vector search — it compares the query vector against every stored vector linearly.
 
-| Emails | Embedding storage (1536d) | Vector search time |
+Default model: `Xenova/bge-small-en-v1.5` (384 dimensions, float32).
+
+| Emails | Embedding storage (384d) | Vector search time |
 |--------|--------------------------|-------------------|
-| 10k | ~60 MB | ~10-20ms |
-| 100k | ~600 MB | ~100-300ms |
-| 500k | ~3 GB | ~1-2s |
-| 1M | ~6 GB | ~3-5s |
+| 10k | ~15 MB | ~5-10ms |
+| 100k | ~150 MB | ~30-80ms |
+| 500k | ~750 MB | ~200-500ms |
+| 1M | ~1.5 GB | ~500ms-1s |
+
+Using a larger model via `openai-compatible` (e.g. 1536d): multiply storage by 4×, search times by ~3-4×.
 
 ### Mitigations
 
@@ -463,12 +476,24 @@ interface LLMConfig {
 }
 
 interface EmbeddingConfig {
-  provider: 'openai' | 'openai-compatible';  // Anthropic has no embedding models
+  provider: 'local' | 'openai-compatible';
   model: string;
-  apiKey?: string;
-  baseUrl?: string;        // for Ollama / LMStudio
-  dimension: number;
+  dimension: number;       // must match the model's output; drives BLOB sizing and cosine math
+  baseUrl?: string;        // required when provider is 'openai-compatible' (e.g. LMStudio, Ollama)
+  apiKey?: string;         // optional — many local endpoints don't require one
 }
+
+// provider: 'local'
+//   Uses @huggingface/transformers to run the model in-process via ONNX Runtime.
+//   No API key, no network calls after first run. Model files (~80MB for bge-small-en-v1.5)
+//   are downloaded once and cached by the runtime.
+//   BGE models apply a query prefix ("Represent this sentence for searching relevant passages: ")
+//   when embedding search queries, but not when embedding stored documents.
+//
+// provider: 'openai-compatible'
+//   Calls any OpenAI-compatible /v1/embeddings endpoint (LMStudio, Ollama, etc.).
+//   Set baseUrl to the local server, e.g. "http://localhost:1234/v1".
+//   No query prefix is applied — the serving endpoint handles it if needed.
 ```
 
 ## 9. Configuration
@@ -483,11 +508,17 @@ All configuration stored in `~/.gmail-sweep/config.json`:
     "apiKey": "sk-..."
   },
   "embedding": {
-    "provider": "openai",
-    "model": "text-embedding-3-small",
-    "apiKey": "sk-...",
-    "dimension": 1536
+    "provider": "local",
+    "model": "Xenova/bge-small-en-v1.5",
+    "dimension": 384
   },
+  // To use LMStudio or Ollama instead:
+  // "embedding": {
+  //   "provider": "openai-compatible",
+  //   "model": "nomic-embed-text-v1.5",
+  //   "baseUrl": "http://localhost:1234/v1",
+  //   "dimension": 768
+  // },
   "sync": {
     "defaultBatchSize": 500
   },
@@ -515,7 +546,9 @@ All configuration stored in `~/.gmail-sweep/config.json`:
 | OAuth2 | google-auth-library |
 | HTML-to-text | html-to-text |
 | LLM (Anthropic) | @anthropic-ai/sdk |
-| LLM (OpenAI) | openai |
+| LLM (OpenAI / compatible) | openai |
+| Embeddings (local) | @huggingface/transformers |
+| Embeddings (API) | openai (openai-compatible) |
 | Terminal client | OpenTUI |
 | Web client | React + Vite |
 | Shared types | TypeScript |

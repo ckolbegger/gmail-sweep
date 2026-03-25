@@ -39,7 +39,8 @@ packages/
         db.ts                         ← SQLite setup, schema, CRUD operations
         gmail.ts                      ← Gmail API client, OAuth2 token management
         sync.ts                       ← gap-aware sync algorithm
-        ai.ts                         ← provider-agnostic LLM (chat + embeddings)
+        ai.ts                         ← provider-agnostic LLM (summarize + query parsing)
+        embed.ts                      ← embedding provider (local Transformers.js or openai-compatible)
         content.ts                    ← HTML-to-text, embedding text extraction
         search.ts                     ← AI query parsing + SQL filter + vector rank
 
@@ -252,11 +253,11 @@ export interface LLMConfig {
 }
 
 export interface EmbeddingConfig {
-  provider: 'openai' | 'openai-compatible'; // Anthropic has no embedding models
+  provider: 'local' | 'openai-compatible';
   model: string;
-  apiKey?: string;
-  baseUrl?: string;
-  dimension: number;
+  dimension: number;    // must match the model output; used for BLOB sizing and cosine math
+  baseUrl?: string;     // required when provider is 'openai-compatible'
+  apiKey?: string;      // optional — many local endpoints don't require one
 }
 
 export interface AppConfig {
@@ -336,6 +337,7 @@ git commit -m "feat: shared types package"
   "dependencies": {
     "@gmail-sweep/shared": "*",
     "@anthropic-ai/sdk": "^0.39.0",
+    "@huggingface/transformers": "^3.0.0",
     "better-sqlite3": "^9.6.0",
     "fastify": "^5.1.0",
     "google-auth-library": "^9.14.0",
@@ -528,9 +530,9 @@ export function getDefaultConfig(): AppConfig {
       model: 'claude-sonnet-4-6',
     },
     embedding: {
-      provider: 'openai',
-      model: 'text-embedding-3-small',
-      dimension: 1536,
+      provider: 'local',
+      model: 'Xenova/bge-small-en-v1.5',
+      dimension: 384,
     },
     sync: {
       defaultBatchSize: 500,
@@ -1146,16 +1148,15 @@ git commit -m "feat: content extraction — HTML-to-text and embedding text buil
 - Create: `packages/backend/src/services/ai.ts`
 - Create: `packages/backend/src/services/ai.test.ts`
 
-Provider-agnostic LLM service. Handles: email summarization, natural language query parsing, and text embeddings. Supports Anthropic, OpenAI, and any OpenAI-compatible endpoint.
+Provider-agnostic LLM service for email summarization and natural language query parsing only. Embeddings are handled separately in `embed.ts` (Task 7.5).
 
 - [ ] **Step 1: Write failing tests**
 
 Create `packages/backend/src/services/ai.test.ts`:
 
 ```typescript
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
-// Mock providers before importing the service
 vi.mock('@anthropic-ai/sdk', () => ({
   default: vi.fn().mockImplementation(() => ({
     messages: {
@@ -1179,22 +1180,18 @@ vi.mock('openai', () => ({
         keyPoints: [],
       })}}],
     })},
-    embeddings: { create: vi.fn().mockResolvedValue({
-      data: [{ embedding: new Array(1536).fill(0.1) }],
-    })},
   })),
 }));
 
 import { createAiService } from './ai.js';
-import type { LLMConfig, EmbeddingConfig } from '@gmail-sweep/shared';
+import type { LLMConfig } from '@gmail-sweep/shared';
 
 describe('AI service', () => {
   describe('with Anthropic provider', () => {
     const llmConfig: LLMConfig = { provider: 'anthropic', model: 'claude-sonnet-4-6', apiKey: 'test-key' };
-    const embeddingConfig: EmbeddingConfig = { provider: 'openai', model: 'text-embedding-3-small', apiKey: 'oai-key', dimension: 1536 };
 
     it('generates a structured summary', async () => {
-      const ai = createAiService(llmConfig, embeddingConfig);
+      const ai = createAiService(llmConfig);
       const summary = await ai.summarizeEmail('Test email body about budget approval');
       expect(summary.description).toBeTypeOf('string');
       expect(Array.isArray(summary.actionItems)).toBe(true);
@@ -1204,7 +1201,6 @@ describe('AI service', () => {
 
   describe('parseSearchQuery', () => {
     const llmConfig: LLMConfig = { provider: 'openai', model: 'gpt-4o', apiKey: 'test-key' };
-    const embeddingConfig: EmbeddingConfig = { provider: 'openai', model: 'text-embedding-3-small', apiKey: 'test-key', dimension: 1536 };
 
     it('parses a natural language query into filters and semantic query', async () => {
       const mockCreate = vi.fn().mockResolvedValue({
@@ -1216,25 +1212,12 @@ describe('AI service', () => {
 
       vi.mocked((await import('openai')).default).mockImplementationOnce(() => ({
         chat: { completions: { create: mockCreate } },
-        embeddings: { create: vi.fn() },
       }) as any);
 
-      const ai = createAiService(llmConfig, embeddingConfig);
+      const ai = createAiService(llmConfig);
       const parsed = await ai.parseSearchQuery('emails from sarah about project deadline');
       expect(parsed.filters.sender).toBe('sarah');
       expect(parsed.semanticQuery).toBe('project deadline');
-    });
-  });
-
-  describe('embedText', () => {
-    const llmConfig: LLMConfig = { provider: 'openai', model: 'gpt-4o', apiKey: 'test-key' };
-    const embeddingConfig: EmbeddingConfig = { provider: 'openai', model: 'text-embedding-3-small', apiKey: 'test-key', dimension: 1536 };
-
-    it('returns a float array of the configured dimension', async () => {
-      const ai = createAiService(llmConfig, embeddingConfig);
-      const vector = await ai.embedText('Subject: Hello\n\nTest body');
-      expect(Array.isArray(vector)).toBe(true);
-      expect(vector).toHaveLength(1536);
     });
   });
 });
@@ -1253,12 +1236,11 @@ Expected: FAIL — `createAiService` not found
 ```typescript
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
-import type { LLMConfig, EmbeddingConfig, EmailSummary, ParsedQuery } from '@gmail-sweep/shared';
+import type { LLMConfig, EmailSummary, ParsedQuery } from '@gmail-sweep/shared';
 
 export interface AiService {
   summarizeEmail(bodyText: string): Promise<EmailSummary>;
   parseSearchQuery(query: string): Promise<ParsedQuery>;
-  embedText(text: string): Promise<number[]>;
 }
 
 const SUMMARY_PROMPT = (body: string) => `
@@ -1296,14 +1278,11 @@ function parseJson<T>(text: string): T {
   return JSON.parse(match[0]) as T;
 }
 
-function buildOpenAiClient(config: LLMConfig | EmbeddingConfig): OpenAI {
-  return new OpenAI({
-    apiKey: config.apiKey,
-    baseURL: config.baseUrl,
-  });
+function buildOpenAiClient(config: LLMConfig): OpenAI {
+  return new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl });
 }
 
-export function createAiService(llmConfig: LLMConfig, embeddingConfig: EmbeddingConfig): AiService {
+export function createAiService(llmConfig: LLMConfig): AiService {
   return {
     async summarizeEmail(bodyText) {
       const prompt = SUMMARY_PROMPT(bodyText);
@@ -1319,7 +1298,6 @@ export function createAiService(llmConfig: LLMConfig, embeddingConfig: Embedding
         return parseJson<EmailSummary>(text);
       }
 
-      // OpenAI or openai-compatible
       const client = buildOpenAiClient(llmConfig);
       const response = await client.chat.completions.create({
         model: llmConfig.model,
@@ -1351,15 +1329,6 @@ export function createAiService(llmConfig: LLMConfig, embeddingConfig: Embedding
       });
       return parseJson<ParsedQuery>(response.choices[0]?.message.content ?? '');
     },
-
-    async embedText(text) {
-      const client = buildOpenAiClient(embeddingConfig);
-      const response = await client.embeddings.create({
-        model: embeddingConfig.model,
-        input: text,
-      });
-      return response.data[0]!.embedding;
-    },
   };
 }
 ```
@@ -1370,13 +1339,221 @@ export function createAiService(llmConfig: LLMConfig, embeddingConfig: Embedding
 cd packages/backend && npx vitest run src/services/ai.test.ts
 ```
 
-Expected: PASS
+Expected: PASS (2 tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add packages/backend/src/services/ai.ts packages/backend/src/services/ai.test.ts
-git commit -m "feat: provider-agnostic AI service (Anthropic, OpenAI, OpenAI-compatible)"
+git commit -m "feat: AI service for summarization and query parsing"
+```
+
+---
+
+## Task 7.5: Embedding Service
+
+**Files:**
+- Create: `packages/backend/src/services/embed.ts`
+- Create: `packages/backend/src/services/embed.test.ts`
+
+Two providers, same interface:
+
+- **`local`** — runs the model in-process via `@huggingface/transformers` (ONNX Runtime). Model files downloaded once, cached by the runtime. BGE models apply a query prefix when embedding search queries but not stored documents.
+- **`openai-compatible`** — calls any `/v1/embeddings` endpoint (LMStudio, Ollama). No query prefix applied; the serving endpoint handles model-specific behaviour.
+
+`embedDocument` is used when storing email vectors. `embedQuery` is used for search queries. They differ only in the BGE query prefix for the `local` provider.
+
+- [ ] **Step 1: Write failing tests**
+
+Create `packages/backend/src/services/embed.test.ts`:
+
+```typescript
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+vi.mock('@huggingface/transformers', () => ({
+  pipeline: vi.fn().mockResolvedValue(
+    vi.fn().mockResolvedValue({ data: new Float32Array(384).fill(0.1) })
+  ),
+}));
+
+vi.mock('openai', () => ({
+  default: vi.fn().mockImplementation(() => ({
+    embeddings: {
+      create: vi.fn().mockResolvedValue({
+        data: [{ embedding: new Array(768).fill(0.1) }],
+      }),
+    },
+  })),
+}));
+
+import { createEmbedService } from './embed.js';
+import type { EmbeddingConfig } from '@gmail-sweep/shared';
+
+describe('embed service', () => {
+  describe('local provider', () => {
+    const config: EmbeddingConfig = {
+      provider: 'local',
+      model: 'Xenova/bge-small-en-v1.5',
+      dimension: 384,
+    };
+
+    it('embedDocument returns a 384-element float array', async () => {
+      const svc = createEmbedService(config);
+      const vec = await svc.embedDocument('Subject: Hello\n\nTest body');
+      expect(Array.isArray(vec)).toBe(true);
+      expect(vec).toHaveLength(384);
+    });
+
+    it('embedQuery returns a 384-element float array', async () => {
+      const svc = createEmbedService(config);
+      const vec = await svc.embedQuery('emails about project deadlines');
+      expect(Array.isArray(vec)).toBe(true);
+      expect(vec).toHaveLength(384);
+    });
+
+    it('embedQuery prepends the BGE query prefix', async () => {
+      const { pipeline } = await import('@huggingface/transformers');
+      const mockExtractor = vi.fn().mockResolvedValue({ data: new Float32Array(384).fill(0.1) });
+      vi.mocked(pipeline).mockResolvedValueOnce(mockExtractor as any);
+
+      const svc = createEmbedService(config);
+      await svc.embedQuery('project deadline');
+
+      const callArg = (mockExtractor.mock.calls[0] as [string])[0];
+      expect(callArg).toMatch(/^Represent this sentence/);
+      expect(callArg).toContain('project deadline');
+    });
+
+    it('embedDocument does NOT prepend a query prefix', async () => {
+      const { pipeline } = await import('@huggingface/transformers');
+      const mockExtractor = vi.fn().mockResolvedValue({ data: new Float32Array(384).fill(0.1) });
+      vi.mocked(pipeline).mockResolvedValueOnce(mockExtractor as any);
+
+      const svc = createEmbedService(config);
+      await svc.embedDocument('Subject: Hello\n\nBody text');
+
+      const callArg = (mockExtractor.mock.calls[0] as [string])[0];
+      expect(callArg).toBe('Subject: Hello\n\nBody text');
+    });
+  });
+
+  describe('openai-compatible provider', () => {
+    const config: EmbeddingConfig = {
+      provider: 'openai-compatible',
+      model: 'nomic-embed-text-v1.5',
+      dimension: 768,
+      baseUrl: 'http://localhost:1234/v1',
+    };
+
+    it('embedDocument calls the configured API endpoint and returns the right dimension', async () => {
+      const svc = createEmbedService(config);
+      const vec = await svc.embedDocument('test text');
+      expect(vec).toHaveLength(768);
+    });
+
+    it('embedQuery does not prepend any prefix', async () => {
+      const OpenAI = (await import('openai')).default;
+      const mockCreate = vi.fn().mockResolvedValue({
+        data: [{ embedding: new Array(768).fill(0.1) }],
+      });
+      vi.mocked(OpenAI).mockImplementationOnce(() => ({
+        embeddings: { create: mockCreate },
+      }) as any);
+
+      const svc = createEmbedService(config);
+      await svc.embedQuery('project deadline');
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ input: 'project deadline' })
+      );
+    });
+  });
+});
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+```bash
+cd packages/backend && npx vitest run src/services/embed.test.ts
+```
+
+Expected: FAIL — `createEmbedService` not found
+
+- [ ] **Step 3: Implement packages/backend/src/services/embed.ts**
+
+```typescript
+import OpenAI from 'openai';
+import type { EmbeddingConfig } from '@gmail-sweep/shared';
+
+// BGE retrieval models are trained with asymmetric query/document embeddings.
+// Queries get this prefix; stored documents do not.
+const BGE_QUERY_PREFIX = 'Represent this sentence for searching relevant passages: ';
+
+export interface EmbedService {
+  embedDocument(text: string): Promise<number[]>;
+  embedQuery(text: string): Promise<number[]>;
+}
+
+// --- Local provider (Transformers.js) ---
+
+// Module-level cache: pipeline() loads ONNX model once per process.
+let localExtractor: ((...args: unknown[]) => Promise<{ data: Float32Array }>) | null = null;
+let localModelId: string | null = null;
+
+async function getLocalExtractor(model: string) {
+  if (localExtractor === null || localModelId !== model) {
+    console.log(`Loading local embedding model: ${model} (first run downloads model files, then cached)`);
+    const { pipeline } = await import('@huggingface/transformers');
+    localExtractor = (await pipeline('feature-extraction', model)) as typeof localExtractor;
+    localModelId = model;
+  }
+  return localExtractor!;
+}
+
+async function embedLocal(model: string, text: string): Promise<number[]> {
+  const extractor = await getLocalExtractor(model);
+  const output = await extractor(text, { pooling: 'mean', normalize: true });
+  return Array.from(output.data);
+}
+
+// --- OpenAI-compatible provider ---
+
+async function embedApi(config: EmbeddingConfig, text: string): Promise<number[]> {
+  const client = new OpenAI({ apiKey: config.apiKey ?? 'local', baseURL: config.baseUrl });
+  const response = await client.embeddings.create({ model: config.model, input: text });
+  return response.data[0]!.embedding;
+}
+
+// --- Factory ---
+
+export function createEmbedService(config: EmbeddingConfig): EmbedService {
+  if (config.provider === 'local') {
+    return {
+      embedDocument: (text) => embedLocal(config.model, text),
+      embedQuery: (text) => embedLocal(config.model, BGE_QUERY_PREFIX + text),
+    };
+  }
+  // openai-compatible: no query prefix — the serving endpoint handles model-specific behaviour
+  return {
+    embedDocument: (text) => embedApi(config, text),
+    embedQuery: (text) => embedApi(config, text),
+  };
+}
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+```bash
+cd packages/backend && npx vitest run src/services/embed.test.ts
+```
+
+Expected: PASS (6 tests)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add packages/backend/src/services/embed.ts packages/backend/src/services/embed.test.ts
+git commit -m "feat: embedding service (local Transformers.js + openai-compatible)"
 ```
 
 ---
@@ -1946,6 +2123,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createDb, type DbHandle } from './db.js';
 import { createSearchService } from './search.js';
 import type { AiService } from './ai.js';
+import type { EmbedService } from './embed.js';
 import type { Email } from '@gmail-sweep/shared';
 
 function makeEmail(id: string, sender: string, subject: string, date: string, bodyText = ''): Email {
@@ -1956,13 +2134,17 @@ function makeEmail(id: string, sender: string, subject: string, date: string, bo
 describe('search service', () => {
   let db: DbHandle;
   let mockAi: AiService;
+  let mockEmbed: EmbedService;
 
   beforeEach(() => {
     db = createDb(':memory:');
     mockAi = {
       summarizeEmail: vi.fn(),
       parseSearchQuery: vi.fn(),
-      embedText: vi.fn().mockResolvedValue(new Array(1536).fill(0.1)),
+    };
+    mockEmbed = {
+      embedDocument: vi.fn(),
+      embedQuery: vi.fn().mockResolvedValue(new Array(384).fill(0.1)),
     };
   });
 
@@ -1975,7 +2157,7 @@ describe('search service', () => {
       semanticQuery: 'project deadline',
     });
 
-    const search = createSearchService(db, mockAi);
+    const search = createSearchService(db, mockAi, mockEmbed);
     const result = await search.search({ query: 'emails from sarah about project', limit: 10 });
 
     expect(result.emails).toHaveLength(1);
@@ -1991,7 +2173,7 @@ describe('search service', () => {
       semanticQuery: 'content',
     });
 
-    const search = createSearchService(db, mockAi);
+    const search = createSearchService(db, mockAi, mockEmbed);
     const result = await search.search({ query: 'content', limit: 10 });
 
     expect(result.emails).toHaveLength(2);
@@ -2002,7 +2184,7 @@ describe('search service', () => {
 
     vi.mocked(mockAi.parseSearchQuery).mockResolvedValue({ filters: {}, semanticQuery: 'test' });
 
-    const search = createSearchService(db, mockAi);
+    const search = createSearchService(db, mockAi, mockEmbed);
     const result = await search.search({ query: 'test', limit: 10 });
 
     expect(result.scores).toHaveLength(result.emails.length);
@@ -2023,13 +2205,14 @@ Expected: FAIL — `createSearchService` not found
 ```typescript
 import type { DbHandle } from './db.js';
 import type { AiService } from './ai.js';
+import type { EmbedService } from './embed.js';
 import type { SearchRequest, SearchResult, Email } from '@gmail-sweep/shared';
 
 export interface SearchService {
   search(request: SearchRequest): Promise<SearchResult>;
 }
 
-export function createSearchService(db: DbHandle, ai: AiService): SearchService {
+export function createSearchService(db: DbHandle, ai: AiService, embed: EmbedService): SearchService {
   return {
     async search({ query, limit = 20, strategy }) {
       // Step 1: AI parses the query into structured filters + semantic query
@@ -2052,7 +2235,7 @@ export function createSearchService(db: DbHandle, ai: AiService): SearchService 
       if (parsed.semanticQuery.trim()) {
         try {
           const activeStrategy = strategy ?? 'v1-plain';
-          const queryVector = await ai.embedText(parsed.semanticQuery);
+          const queryVector = await embed.embedQuery(parsed.semanticQuery);
 
           // Load stored embeddings for candidates that have them
           const storedEmbeddings = db.getEmbeddingsForStrategy(activeStrategy, 2000);
@@ -2133,20 +2316,19 @@ Create `packages/backend/src/services/embeddings.test.ts`:
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createDb, type DbHandle } from './db.js';
 import { generatePendingEmbeddings } from './embeddings.js';
-import type { AiService } from './ai.js';
+import type { EmbedService } from './embed.js';
 import type { ExtractionStrategy } from '@gmail-sweep/shared';
 
 describe('generatePendingEmbeddings', () => {
   let db: DbHandle;
-  let mockAi: AiService;
+  let mockEmbed: EmbedService;
   const strategy: ExtractionStrategy = { type: 'template', template: 'Subject: {{subject}}\n\n{{body_text}}' };
 
   beforeEach(() => {
     db = createDb(':memory:');
-    mockAi = {
-      summarizeEmail: vi.fn(),
-      parseSearchQuery: vi.fn(),
-      embedText: vi.fn().mockResolvedValue(new Array(1536).fill(0.5)),
+    mockEmbed = {
+      embedDocument: vi.fn().mockResolvedValue(new Array(384).fill(0.5)),
+      embedQuery: vi.fn(),
     };
   });
 
@@ -2155,10 +2337,10 @@ describe('generatePendingEmbeddings', () => {
       date: '2026-03-01T00:00:00Z', snippet: '', bodyText: 'Hello world', bodyHtml: null,
       labels: [], summary: null, hasEmbedding: false, embeddingStrategy: null });
 
-    const count = await generatePendingEmbeddings(db, mockAi, 'v1-plain', strategy, 10);
+    const count = await generatePendingEmbeddings(db, mockEmbed, 'v1-plain', strategy, 10);
 
     expect(count).toBe(1);
-    expect(mockAi.embedText).toHaveBeenCalledOnce();
+    expect(mockEmbed.embedDocument).toHaveBeenCalledOnce();
     const email = db.getEmail('msg1');
     expect(email!.hasEmbedding).toBe(true);
     expect(email!.embeddingStrategy).toBe('v1-plain');
@@ -2169,10 +2351,10 @@ describe('generatePendingEmbeddings', () => {
       date: '2026-03-01T00:00:00Z', snippet: '', bodyText: 'Hello world', bodyHtml: null,
       labels: [], summary: null, hasEmbedding: true, embeddingStrategy: 'v1-plain' });
 
-    const count = await generatePendingEmbeddings(db, mockAi, 'v1-plain', strategy, 10);
+    const count = await generatePendingEmbeddings(db, mockEmbed, 'v1-plain', strategy, 10);
 
     expect(count).toBe(0);
-    expect(mockAi.embedText).not.toHaveBeenCalled();
+    expect(mockEmbed.embedDocument).not.toHaveBeenCalled();
   });
 
   it('respects the batch limit', async () => {
@@ -2182,10 +2364,10 @@ describe('generatePendingEmbeddings', () => {
         labels: [], summary: null, hasEmbedding: false, embeddingStrategy: null });
     }
 
-    const count = await generatePendingEmbeddings(db, mockAi, 'v1-plain', strategy, 3);
+    const count = await generatePendingEmbeddings(db, mockEmbed, 'v1-plain', strategy, 3);
 
     expect(count).toBe(3);
-    expect(mockAi.embedText).toHaveBeenCalledTimes(3);
+    expect(mockEmbed.embedDocument).toHaveBeenCalledTimes(3);
   });
 });
 ```
@@ -2202,7 +2384,7 @@ Expected: FAIL — `generatePendingEmbeddings` not found
 
 ```typescript
 import type { DbHandle } from './db.js';
-import type { AiService } from './ai.js';
+import type { EmbedService } from './embed.js';
 import { buildEmbeddingText } from './content.js';
 import type { ExtractionStrategy } from '@gmail-sweep/shared';
 
@@ -2214,7 +2396,7 @@ import type { ExtractionStrategy } from '@gmail-sweep/shared';
  */
 export async function generatePendingEmbeddings(
   db: DbHandle,
-  ai: AiService,
+  embedService: EmbedService,
   strategyId: string,
   strategy: ExtractionStrategy,
   batchLimit: number
@@ -2224,7 +2406,7 @@ export async function generatePendingEmbeddings(
 
   for (const email of pending) {
     const text = buildEmbeddingText({ subject: email.subject, bodyText: email.bodyText }, strategy);
-    const vector = await ai.embedText(text);
+    const vector = await embedService.embedDocument(text);
     db.upsertEmbedding(email.id, strategyId, vector);
     db.markEmbedded(email.id, strategyId);
     count++;
@@ -2287,7 +2469,7 @@ vi.mock('../config.js', () => ({
   loadConfig: vi.fn().mockResolvedValue({
     google: { clientId: 'id', clientSecret: 'secret', redirectUri: 'http://localhost:3141/auth/callback' },
     llm: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
-    embedding: { provider: 'openai', model: 'text-embedding-3-small', dimension: 1536 },
+    embedding: { provider: 'local', model: 'Xenova/bge-small-en-v1.5', dimension: 384 },
     sync: { defaultBatchSize: 500 },
     contentExtraction: { activeStrategy: 'v1-plain', strategies: {} },
   }),
@@ -2330,7 +2512,7 @@ vi.mock('../config.js', () => ({
   loadConfig: vi.fn().mockResolvedValue({
     google: { clientId: 'id', clientSecret: 'secret', redirectUri: 'http://localhost:3141/auth/callback' },
     llm: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
-    embedding: { provider: 'openai', model: 'text-embedding-3-small', dimension: 1536 },
+    embedding: { provider: 'local', model: 'Xenova/bge-small-en-v1.5', dimension: 384 },
     sync: { defaultBatchSize: 500 },
     contentExtraction: { activeStrategy: 'v1-plain', strategies: { 'v1-plain': { type: 'template', template: 'Subject: {{subject}}\n\n{{body_text}}' } } },
   }),
@@ -2474,7 +2656,7 @@ export async function emailRoutes(
 import type { FastifyInstance } from 'fastify';
 import type { DbHandle } from '../services/db.js';
 import type { GmailService } from '../services/gmail.js';
-import type { AiService } from '../services/ai.js';
+import type { EmbedService } from '../services/embed.js';
 import type { AppConfig } from '@gmail-sweep/shared';
 import { runSyncCycle } from '../services/sync.js';
 import { generatePendingEmbeddings } from '../services/embeddings.js';
@@ -2483,9 +2665,9 @@ const EMBEDDING_BATCH_SIZE = 50; // embed up to N emails per sync cycle
 
 export async function syncRoutes(
   app: FastifyInstance,
-  options: { db: DbHandle; gmail: GmailService; ai: AiService; config: AppConfig; defaultBatchSize: number }
+  options: { db: DbHandle; gmail: GmailService; embed: EmbedService; config: AppConfig; defaultBatchSize: number }
 ) {
-  const { db, gmail, ai, config, defaultBatchSize } = options;
+  const { db, gmail, embed, config, defaultBatchSize } = options;
 
   app.post('/sync', async (request) => {
     const body = request.body as { batchSize?: number } | undefined;
@@ -2499,7 +2681,7 @@ export async function syncRoutes(
     const strategy = strategies[activeStrategy];
     let embeddingsGenerated = 0;
     if (strategy) {
-      embeddingsGenerated = await generatePendingEmbeddings(db, ai, activeStrategy, strategy, EMBEDDING_BATCH_SIZE);
+      embeddingsGenerated = await generatePendingEmbeddings(db, embed, activeStrategy, strategy, EMBEDDING_BATCH_SIZE);
     }
 
     return { ...syncResult, embeddingsGenerated };
@@ -2575,6 +2757,7 @@ import { loadConfig } from './config.js';
 import { createDb } from './services/db.js';
 import { createGmailService } from './services/gmail.js';
 import { createAiService } from './services/ai.js';
+import { createEmbedService } from './services/embed.js';
 import { createSearchService } from './services/search.js';
 import { authRoutes } from './routes/auth.js';
 import { emailRoutes } from './routes/emails.js';
@@ -2595,14 +2778,15 @@ export async function buildServer(options?: { dbPath?: string }) {
     config.google.redirectUri
   );
 
-  const ai = createAiService(config.llm, config.embedding);
-  const search = createSearchService(db, ai);
+  const ai = createAiService(config.llm);
+  const embed = createEmbedService(config.embedding);
+  const search = createSearchService(db, ai, embed);
 
   app.get('/health', async () => ({ status: 'ok' }));
 
   await app.register(authRoutes, { gmail });
   await app.register(emailRoutes, { db, gmail, ai });
-  await app.register(syncRoutes, { db, gmail, ai, config, defaultBatchSize: config.sync.defaultBatchSize });
+  await app.register(syncRoutes, { db, gmail, embed, config, defaultBatchSize: config.sync.defaultBatchSize });
   await app.register(searchRoutes, { search });
   await app.register(configRoutes);
 
