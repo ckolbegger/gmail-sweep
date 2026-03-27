@@ -1,6 +1,8 @@
 import type { DbHandle } from './db.js';
 import type { GmailService } from './gmail.js';
-import type { SyncResult } from '@gmail-sweep/shared';
+import type { SyncResult, AppConfig } from '@gmail-sweep/shared';
+import type { EmbedService } from './embed.js';
+import { generatePendingEmbeddings } from './embeddings.js';
 
 interface SyncOptions {
   batchSize: number;
@@ -124,4 +126,29 @@ export async function runSyncCycle(
     olderFetched,
     remainingGaps: db.listGaps(),
   };
+}
+
+const EMBEDDING_BATCH_SIZE = 50;
+
+export async function runSyncWithEmbeddings(
+  db: DbHandle,
+  gmail: GmailService,
+  embed: EmbedService,
+  config: AppConfig,
+  options: SyncOptions & { skipEmbeddings?: boolean }
+): Promise<SyncResult & { embeddingsGenerated: number }> {
+  const syncResult = await runSyncCycle(db, gmail, options);
+
+  let embeddingsGenerated = 0;
+  if (!options.skipEmbeddings) {
+    const { activeStrategy, strategies } = config.contentExtraction;
+    const strategy = strategies[activeStrategy];
+    if (strategy) {
+      embeddingsGenerated = await generatePendingEmbeddings(
+        db, embed, activeStrategy, strategy, EMBEDDING_BATCH_SIZE
+      );
+    }
+  }
+
+  return { ...syncResult, embeddingsGenerated };
 }

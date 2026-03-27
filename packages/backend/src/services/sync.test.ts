@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createDb, type DbHandle } from './db.js';
-import { runSyncCycle } from './sync.js';
+import { runSyncCycle, runSyncWithEmbeddings } from './sync.js';
 import type { GmailService } from './gmail.js';
-import type { Email } from '@gmail-sweep/shared';
+import type { Email, AppConfig } from '@gmail-sweep/shared';
+import type { EmbedService } from './embed.js';
 
 function makeEmail(id: string, date: string): Email {
   return {
@@ -108,5 +109,79 @@ describe('sync service', () => {
 
     expect(result.gapsFilled).toBeGreaterThan(0);
     expect(db.listGaps()).toHaveLength(0);
+  });
+});
+
+describe('runSyncWithEmbeddings', () => {
+  it('returns embeddingsGenerated from embedding pipeline', async () => {
+    const db = {
+      getSyncState: vi.fn().mockReturnValue({ totalSynced: 0, newestDate: null, oldestDate: null }),
+      getEmail: vi.fn().mockReturnValue(null),
+      upsertEmail: vi.fn(),
+      updateSyncState: vi.fn(),
+      listGaps: vi.fn().mockReturnValue([]),
+      getEmailsWithoutEmbedding: vi.fn().mockReturnValue([]),
+    } as unknown as DbHandle;
+
+    const gmail = {
+      fetchMessagesSince: vi.fn().mockResolvedValue([]),
+      fetchMessagesBefore: vi.fn().mockResolvedValue([]),
+      fetchMessagesInRange: vi.fn().mockResolvedValue([]),
+    } as unknown as GmailService;
+
+    const embed = {
+      embedDocument: vi.fn().mockResolvedValue([0.1, 0.2]),
+    } as unknown as EmbedService;
+
+    const config: AppConfig = {
+      google: { clientId: '', clientSecret: '', redirectUri: '' },
+      llm: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+      embedding: { provider: 'local', model: 'test', dimension: 2 },
+      sync: { defaultBatchSize: 10 },
+      contentExtraction: {
+        activeStrategy: 'v1-plain',
+        strategies: {
+          'v1-plain': { type: 'template', template: '{{body_text}}' },
+        },
+      },
+    };
+
+    const result = await runSyncWithEmbeddings(db, gmail, embed, config, { batchSize: 10 });
+    expect(result).toHaveProperty('embeddingsGenerated');
+    expect(result.embeddingsGenerated).toBe(0);
+  });
+
+  it('skips embeddings when skipEmbeddings is true', async () => {
+    const db = {
+      getSyncState: vi.fn().mockReturnValue({ totalSynced: 0, newestDate: null, oldestDate: null }),
+      getEmail: vi.fn().mockReturnValue(null),
+      upsertEmail: vi.fn(),
+      updateSyncState: vi.fn(),
+      listGaps: vi.fn().mockReturnValue([]),
+      getEmailsWithoutEmbedding: vi.fn().mockReturnValue([]),
+    } as unknown as DbHandle;
+
+    const gmail = {
+      fetchMessagesSince: vi.fn().mockResolvedValue([]),
+      fetchMessagesBefore: vi.fn().mockResolvedValue([]),
+      fetchMessagesInRange: vi.fn().mockResolvedValue([]),
+    } as unknown as GmailService;
+
+    const embed = { embedDocument: vi.fn() } as unknown as EmbedService;
+
+    const config: AppConfig = {
+      google: { clientId: '', clientSecret: '', redirectUri: '' },
+      llm: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+      embedding: { provider: 'local', model: 'test', dimension: 2 },
+      sync: { defaultBatchSize: 10 },
+      contentExtraction: {
+        activeStrategy: 'v1-plain',
+        strategies: { 'v1-plain': { type: 'template', template: '{{body_text}}' } },
+      },
+    };
+
+    const result = await runSyncWithEmbeddings(db, gmail, embed, config, { batchSize: 10, skipEmbeddings: true });
+    expect(embed.embedDocument).not.toHaveBeenCalled();
+    expect(result.embeddingsGenerated).toBe(0);
   });
 });
