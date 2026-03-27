@@ -7,6 +7,8 @@ export interface DbHandle {
   getEmail(id: string): Email | null;
   listEmails(params: EmailListParams): Email[];
   updateSummary(id: string, summary: EmailSummary): void;
+  archiveEmail(id: string): void;
+  trashEmail(id: string): void;
   markEmbedded(id: string, strategy: string): void;
   upsertEmbedding(emailId: string, strategy: string, vector: number[]): void;
   getEmbeddingsForStrategy(strategy: string, limit: number): Array<{ emailId: string; vector: number[] }>;
@@ -173,6 +175,21 @@ export function createDb(dbPath: string): DbHandle {
     updateSummary(id, summary) {
       db.prepare('UPDATE emails SET summary = ? WHERE id = ?')
         .run(JSON.stringify(summary), id);
+    },
+
+    archiveEmail(id) {
+      const row = db.prepare('SELECT labels FROM emails WHERE id = ?').get(id) as { labels: string } | undefined;
+      if (!row) return;
+      const labels = (JSON.parse(row.labels) as string[]).filter(l => l !== 'INBOX');
+      db.prepare('UPDATE emails SET labels = ? WHERE id = ?').run(JSON.stringify(labels), id);
+    },
+
+    trashEmail(id) {
+      const row = db.prepare('SELECT labels FROM emails WHERE id = ?').get(id) as { labels: string } | undefined;
+      if (!row) return;
+      const labels = JSON.parse(row.labels) as string[];
+      if (!labels.includes('TRASH')) labels.push('TRASH');
+      db.prepare('UPDATE emails SET labels = ? WHERE id = ?').run(JSON.stringify(labels), id);
     },
 
     markEmbedded(id, strategy) {

@@ -68,6 +68,50 @@ describe('database service', () => {
       const email = db.getEmail('msg1');
       expect(email!.summary).toEqual({ description: 'A test', actionItems: [], keyPoints: [] });
     });
+
+    it('archiveEmail removes INBOX label', () => {
+      db.upsertEmail({
+        id: 'msg1', threadId: 't1', subject: 'Test', from: 'a@b.com',
+        date: '2026-03-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: ['INBOX', 'UNREAD'], summary: null, hasEmbedding: false, embeddingStrategy: null,
+      });
+
+      db.archiveEmail('msg1');
+
+      const updated = db.getEmail('msg1');
+      expect(updated!.labels).not.toContain('INBOX');
+      expect(updated!.labels).toContain('UNREAD');
+    });
+
+    it('archiveEmail is a no-op for unknown id', () => {
+      expect(() => db.archiveEmail('nonexistent')).not.toThrow();
+    });
+
+    it('trashEmail adds TRASH label', () => {
+      db.upsertEmail({
+        id: 'msg2', threadId: 't2', subject: 'Test', from: 'a@b.com',
+        date: '2026-03-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: ['INBOX'], summary: null, hasEmbedding: false, embeddingStrategy: null,
+      });
+
+      db.trashEmail('msg2');
+
+      const updated = db.getEmail('msg2');
+      expect(updated!.labels).toContain('TRASH');
+    });
+
+    it('trashEmail does not duplicate TRASH label', () => {
+      db.upsertEmail({
+        id: 'msg3', threadId: 't3', subject: 'Test', from: 'a@b.com',
+        date: '2026-03-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: ['TRASH'], summary: null, hasEmbedding: false, embeddingStrategy: null,
+      });
+
+      db.trashEmail('msg3');
+
+      const updated = db.getEmail('msg3');
+      expect(updated!.labels.filter(l => l === 'TRASH')).toHaveLength(1);
+    });
   });
 
   describe('sync state', () => {
