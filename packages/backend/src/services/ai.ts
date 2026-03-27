@@ -44,7 +44,7 @@ function parseJson<T>(text: string): T {
 
 export function createAiService(llmConfig: LLMConfig): AiService {
   const anthropicClient = llmConfig.provider === 'anthropic'
-    ? new Anthropic({ apiKey: llmConfig.apiKey })
+    ? new Anthropic({ apiKey: llmConfig.apiKey, ...(llmConfig.baseUrl ? { baseURL: llmConfig.baseUrl } : {}) })
     : null;
   const openAiClient = llmConfig.provider !== 'anthropic'
     ? new OpenAI({ apiKey: llmConfig.apiKey, baseURL: llmConfig.baseUrl })

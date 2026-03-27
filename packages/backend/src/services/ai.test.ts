@@ -37,6 +37,18 @@ describe('AI service', () => {
   describe('with Anthropic provider', () => {
     const llmConfig: LLMConfig = { provider: 'anthropic', model: 'claude-sonnet-4-6', apiKey: 'test-key' };
 
+    it('passes baseUrl to the Anthropic client when configured', async () => {
+      const Anthropic = (await import('@anthropic-ai/sdk')).default;
+      const MockAnthropic = vi.mocked(Anthropic);
+      MockAnthropic.mockClear();
+
+      createAiService({ ...llmConfig, baseUrl: 'http://localhost:8080' });
+
+      expect(MockAnthropic).toHaveBeenCalledWith(
+        expect.objectContaining({ baseURL: 'http://localhost:8080' })
+      );
+    });
+
     it('generates a structured summary', async () => {
       const ai = createAiService(llmConfig);
       const summary = await ai.summarizeEmail('Test email body about budget approval');

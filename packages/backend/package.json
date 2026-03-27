@@ -4,7 +4,7 @@
   "type": "module",
   "main": "./dist/index.js",
   "scripts": {
-    "dev": "node --watch --experimental-strip-types src/index.ts",
+    "dev": "node --env-file=.env --import=tsx/esm --watch src/index.ts",
     "build": "tsc",
     "start": "node --env-file=.env dist/index.js",
     "test": "vitest run",
@@ -26,6 +26,7 @@
     "@types/better-sqlite3": "^7.6.12",
     "@types/html-to-text": "^9.0.4",
     "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.4.0",
     "vitest": "^2.1.0"
   }

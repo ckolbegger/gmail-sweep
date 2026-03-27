@@ -13,7 +13,7 @@ export interface ApiClient {
 
 async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Accept-Encoding': 'identity' },
     ...init,
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${url}`);

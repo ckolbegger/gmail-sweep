@@ -8,6 +8,7 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "dev:backend": "npm run dev -w packages/backend"
+    "dev:backend": "npm run dev -w packages/backend",
+    "dev:terminal": "bun run packages/terminal/src/index.ts"
   }
 }
