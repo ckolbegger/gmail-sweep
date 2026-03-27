@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { DbHandle } from '../services/db.js';
 import type { GmailService } from '../services/gmail.js';
 import type { AiService } from '../services/ai.js';
+import { getOrCreateSummary } from '../services/email-ops.js';
 import type { EmailListParams } from '@gmail-sweep/shared';
 
 export async function emailRoutes(
@@ -17,8 +18,8 @@ export async function emailRoutes(
       date_from: query.date_from,
       date_to: query.date_to,
       subject: query.subject,
-      limit: query.limit ? Number(query.limit) : 50,
-      offset: query.offset ? Number(query.offset) : 0,
+      limit: query.limit ? Number(query.limit) : undefined,
+      offset: query.offset ? Number(query.offset) : undefined,
     });
     return { emails };
   });
@@ -32,31 +33,24 @@ export async function emailRoutes(
 
   app.get('/emails/:id/summary', async (request, reply) => {
     const { id } = request.params as { id: string };
-    const email = db.getEmail(id);
-    if (!email) return reply.code(404).send({ error: 'Email not found' });
-
-    if (email.summary) return email.summary;
-
-    const summary = await ai.summarizeEmail(email.bodyText);
-    db.updateSummary(id, summary);
+    const summary = await getOrCreateSummary(db, ai, id);
+    if (!summary) return reply.code(404).send({ error: 'Email not found' });
     return summary;
   });
 
   app.post('/emails/:id/archive', async (request, reply) => {
     const { id } = request.params as { id: string };
-    const email = db.getEmail(id);
-    if (!email) return reply.code(404).send({ error: 'Email not found' });
+    if (!db.getEmail(id)) return reply.code(404).send({ error: 'Email not found' });
     await gmail.archiveMessage(id);
-    db.upsertEmail({ ...email, labels: email.labels.filter(l => l !== 'INBOX') });
+    db.archiveEmail(id);
     return { ok: true };
   });
 
   app.post('/emails/:id/delete', async (request, reply) => {
     const { id } = request.params as { id: string };
-    const email = db.getEmail(id);
-    if (!email) return reply.code(404).send({ error: 'Email not found' });
+    if (!db.getEmail(id)) return reply.code(404).send({ error: 'Email not found' });
     await gmail.deleteMessage(id);
-    db.upsertEmail({ ...email, labels: [...email.labels, 'TRASH'] });
+    db.trashEmail(id);
     return { ok: true };
   });
 }

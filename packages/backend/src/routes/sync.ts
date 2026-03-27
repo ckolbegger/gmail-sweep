@@ -3,10 +3,7 @@ import type { DbHandle } from '../services/db.js';
 import type { GmailService } from '../services/gmail.js';
 import type { EmbedService } from '../services/embed.js';
 import type { AppConfig } from '@gmail-sweep/shared';
-import { runSyncCycle } from '../services/sync.js';
-import { generatePendingEmbeddings } from '../services/embeddings.js';
-
-const EMBEDDING_BATCH_SIZE = 50;
+import { runSyncWithEmbeddings } from '../services/sync.js';
 
 export async function syncRoutes(
   app: FastifyInstance,
@@ -18,17 +15,7 @@ export async function syncRoutes(
     const body = request.body as { batchSize?: number; skipEmbeddings?: boolean } | undefined;
     const batchSize = body?.batchSize ?? defaultBatchSize;
     const skipEmbeddings = body?.skipEmbeddings ?? false;
-
-    const syncResult = await runSyncCycle(db, gmail, { batchSize });
-
-    const { activeStrategy, strategies } = config.contentExtraction;
-    const strategy = strategies[activeStrategy];
-    let embeddingsGenerated = 0;
-    if (!skipEmbeddings && strategy) {
-      embeddingsGenerated = await generatePendingEmbeddings(db, embed, activeStrategy, strategy, EMBEDDING_BATCH_SIZE);
-    }
-
-    return { ...syncResult, embeddingsGenerated };
+    return runSyncWithEmbeddings(db, gmail, embed, config, { batchSize, skipEmbeddings });
   });
 
   app.get('/sync/status', async () => {
