@@ -42,18 +42,20 @@ function parseJson<T>(text: string): T {
   return JSON.parse(match[0]) as T;
 }
 
-function buildOpenAiClient(config: LLMConfig): OpenAI {
-  return new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl });
-}
-
 export function createAiService(llmConfig: LLMConfig): AiService {
+  const anthropicClient = llmConfig.provider === 'anthropic'
+    ? new Anthropic({ apiKey: llmConfig.apiKey })
+    : null;
+  const openAiClient = llmConfig.provider !== 'anthropic'
+    ? new OpenAI({ apiKey: llmConfig.apiKey, baseURL: llmConfig.baseUrl })
+    : null;
+
   return {
     async summarizeEmail(bodyText) {
       const prompt = SUMMARY_PROMPT(bodyText);
 
-      if (llmConfig.provider === 'anthropic') {
-        const client = new Anthropic({ apiKey: llmConfig.apiKey });
-        const response = await client.messages.create({
+      if (anthropicClient) {
+        const response = await anthropicClient.messages.create({
           model: llmConfig.model,
           max_tokens: 512,
           messages: [{ role: 'user', content: prompt }],
@@ -62,8 +64,7 @@ export function createAiService(llmConfig: LLMConfig): AiService {
         return parseJson<EmailSummary>(text);
       }
 
-      const client = buildOpenAiClient(llmConfig);
-      const response = await client.chat.completions.create({
+      const response = await openAiClient!.chat.completions.create({
         model: llmConfig.model,
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 512,
@@ -74,9 +75,8 @@ export function createAiService(llmConfig: LLMConfig): AiService {
     async parseSearchQuery(query) {
       const prompt = PARSE_QUERY_PROMPT(query);
 
-      if (llmConfig.provider === 'anthropic') {
-        const client = new Anthropic({ apiKey: llmConfig.apiKey });
-        const response = await client.messages.create({
+      if (anthropicClient) {
+        const response = await anthropicClient.messages.create({
           model: llmConfig.model,
           max_tokens: 256,
           messages: [{ role: 'user', content: prompt }],
@@ -85,8 +85,7 @@ export function createAiService(llmConfig: LLMConfig): AiService {
         return parseJson<ParsedQuery>(text);
       }
 
-      const client = buildOpenAiClient(llmConfig);
-      const response = await client.chat.completions.create({
+      const response = await openAiClient!.chat.completions.create({
         model: llmConfig.model,
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 256,
