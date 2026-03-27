@@ -34,3 +34,14 @@ export function extractBodyText(plainText: string | null, htmlBody: string | nul
   if (htmlBody) return htmlToText(htmlBody);
   return '';
 }
+
+export function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length || a.length === 0) return 0;
+  let dot = 0, normA = 0, normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i]! * (b[i] ?? 0);
+    normA += a[i]! ** 2;
+    normB += (b[i] ?? 0) ** 2;
+  }
+  return normA === 0 || normB === 0 ? 0 : dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}

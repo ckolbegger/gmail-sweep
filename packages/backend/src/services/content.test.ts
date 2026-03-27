@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { htmlToText, buildEmbeddingText } from './content.js';
+import { htmlToText, buildEmbeddingText, cosineSimilarity } from './content.js';
 import type { ExtractionStrategy } from '@gmail-sweep/shared';
 
 describe('content extraction', () => {
@@ -47,6 +47,24 @@ describe('content extraction', () => {
       const longBody = 'x'.repeat(10000);
       const result = buildEmbeddingText({ subject: 'Test', bodyText: longBody }, strategy);
       expect(result.length).toBeLessThanOrEqual(8020); // subject + template overhead
+    });
+  });
+
+  describe('cosineSimilarity', () => {
+    it('returns 1 for identical vectors', () => {
+      expect(cosineSimilarity([1, 0, 0], [1, 0, 0])).toBeCloseTo(1);
+    });
+
+    it('returns 0 for orthogonal vectors', () => {
+      expect(cosineSimilarity([1, 0], [0, 1])).toBeCloseTo(0);
+    });
+
+    it('returns 0 for a zero vector', () => {
+      expect(cosineSimilarity([0, 0], [1, 1])).toBe(0);
+    });
+
+    it('returns 0 for empty vectors', () => {
+      expect(cosineSimilarity([], [])).toBe(0);
     });
   });
 });
