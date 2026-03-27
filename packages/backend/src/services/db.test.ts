@@ -154,4 +154,42 @@ describe('database service', () => {
       expect(updated.estimatedCount).toBe(250);
     });
   });
+
+  describe('getNextEmailWithoutSummary / countEmailsWithoutSummary', () => {
+    let db: DbHandle;
+
+    beforeEach(() => {
+      db = createDb(':memory:');
+      db.upsertEmail({
+        id: 'a', threadId: 't1', subject: 'Older', from: 'x@x.com',
+        date: '2024-01-01T00:00:00.000Z', snippet: '', bodyText: 'body',
+        bodyHtml: null, labels: [], summary: null,
+        hasEmbedding: false, embeddingStrategy: null,
+      });
+      db.upsertEmail({
+        id: 'b', threadId: 't2', subject: 'Newer', from: 'y@y.com',
+        date: '2024-06-01T00:00:00.000Z', snippet: '', bodyText: 'body',
+        bodyHtml: null, labels: [], summary: null,
+        hasEmbedding: false, embeddingStrategy: null,
+      });
+    });
+
+    it('returns the newest email without a summary', () => {
+      const email = db.getNextEmailWithoutSummary();
+      expect(email?.id).toBe('b');
+    });
+
+    it('returns null when all emails have summaries', () => {
+      const summary = { description: 'd', actionItems: [], keyPoints: [] };
+      db.updateSummary('a', summary);
+      db.updateSummary('b', summary);
+      expect(db.getNextEmailWithoutSummary()).toBeNull();
+    });
+
+    it('counts emails without summaries', () => {
+      expect(db.countEmailsWithoutSummary()).toBe(2);
+      db.updateSummary('a', { description: 'd', actionItems: [], keyPoints: [] });
+      expect(db.countEmailsWithoutSummary()).toBe(1);
+    });
+  });
 });

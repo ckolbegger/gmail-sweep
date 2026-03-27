@@ -19,6 +19,8 @@ export interface DbHandle {
   deleteGap(id: number): void;
   updateGapBoundary(id: number, update: { olderBoundary: string; estimatedCount: number }): void;
   getEmailsWithoutEmbedding(strategy: string, limit: number): Email[];
+  getNextEmailWithoutSummary(): Email | null;
+  countEmailsWithoutSummary(): number;
   close(): void;
 }
 
@@ -249,6 +251,20 @@ export function createDb(dbPath: string): DbHandle {
         ORDER BY date DESC LIMIT ?
       `).all(strategy, limit) as Record<string, unknown>[];
       return rows.map(rowToEmail);
+    },
+
+    getNextEmailWithoutSummary() {
+      const row = db.prepare(
+        'SELECT * FROM emails WHERE summary IS NULL ORDER BY date DESC LIMIT 1'
+      ).get() as Record<string, unknown> | undefined;
+      return row ? rowToEmail(row) : null;
+    },
+
+    countEmailsWithoutSummary() {
+      const row = db.prepare(
+        'SELECT COUNT(*) as count FROM emails WHERE summary IS NULL'
+      ).get() as { count: number };
+      return row.count;
     },
 
     upsertEmbedding(emailId, strategy, vector) {
