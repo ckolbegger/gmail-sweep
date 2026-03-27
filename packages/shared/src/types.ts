@@ -63,6 +63,12 @@ export interface SearchResult {
   scores: number[];
 }
 
+export interface SummarizerStatus {
+  status: 'running' | 'idle';
+  processed: number;  // emails processed in the current run (resets each run)
+  pending: number;    // emails without a summary (DB count, snapshot at run start)
+}
+
 export interface LLMConfig {
   provider: 'anthropic' | 'openai';
   model: string;
