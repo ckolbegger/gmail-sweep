@@ -59,22 +59,28 @@ describe('api client', () => {
     expect(mockFetch).toHaveBeenCalledWith(`${BASE}/emails/msg1/summary`, expect.any(Object));
   });
 
-  it('archiveEmail calls POST /emails/:id/archive', async () => {
+  it('archiveEmail calls POST /emails/:id/archive without Content-Type header', async () => {
     mockFetch.mockReturnValue(mockOk({}));
     await api.archiveEmail('msg1');
-    expect(mockFetch).toHaveBeenCalledWith(
-      `${BASE}/emails/msg1/archive`,
-      expect.objectContaining({ method: 'POST' }),
-    );
+    const init = mockFetch.mock.calls[0][1] as RequestInit & { headers: Record<string, string> };
+    expect(mockFetch).toHaveBeenCalledWith(`${BASE}/emails/msg1/archive`, expect.objectContaining({ method: 'POST' }));
+    expect(init.headers['Content-Type']).toBeUndefined();
   });
 
-  it('deleteEmail calls POST /emails/:id/delete', async () => {
+  it('deleteEmail calls POST /emails/:id/delete without Content-Type header', async () => {
     mockFetch.mockReturnValue(mockOk({}));
     await api.deleteEmail('msg1');
-    expect(mockFetch).toHaveBeenCalledWith(
-      `${BASE}/emails/msg1/delete`,
-      expect.objectContaining({ method: 'POST' }),
-    );
+    const init = mockFetch.mock.calls[0][1] as RequestInit & { headers: Record<string, string> };
+    expect(mockFetch).toHaveBeenCalledWith(`${BASE}/emails/msg1/delete`, expect.objectContaining({ method: 'POST' }));
+    expect(init.headers['Content-Type']).toBeUndefined();
+  });
+
+  it('sync sends Content-Type: application/json when body is present', async () => {
+    const result: SyncResult = { fetched: 0, newEmails: 0, gapsFilled: 0, olderFetched: 0, remainingGaps: [] };
+    mockFetch.mockReturnValue(mockOk(result));
+    await api.sync(500);
+    const init = mockFetch.mock.calls[0][1] as RequestInit & { headers: Record<string, string> };
+    expect(init.headers['Content-Type']).toBe('application/json');
   });
 
   it('sync calls POST /sync with batchSize', async () => {
