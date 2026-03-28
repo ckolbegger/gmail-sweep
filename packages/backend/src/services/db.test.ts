@@ -35,23 +35,38 @@ describe('database service', () => {
     it('lists emails sorted by date descending', () => {
       db.upsertEmail({ id: 'old', threadId: 't1', subject: 'Old', from: 'a@b.com',
         date: '2026-01-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
-        labels: [], summary: null, hasEmbedding: false, embeddingStrategy: null });
+        labels: ['INBOX'], summary: null, hasEmbedding: false, embeddingStrategy: null });
       db.upsertEmail({ id: 'new', threadId: 't2', subject: 'New', from: 'a@b.com',
         date: '2026-03-23T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
-        labels: [], summary: null, hasEmbedding: false, embeddingStrategy: null });
+        labels: ['INBOX'], summary: null, hasEmbedding: false, embeddingStrategy: null });
 
       const emails = db.listEmails({});
       expect(emails[0].id).toBe('new');
       expect(emails[1].id).toBe('old');
     });
 
+    it('excludes archived and trashed emails', () => {
+      db.upsertEmail({ id: 'inbox', threadId: 't1', subject: 'S', from: 'a@b.com',
+        date: '2026-03-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: ['INBOX'], summary: null, hasEmbedding: false, embeddingStrategy: null });
+      db.upsertEmail({ id: 'archived', threadId: 't2', subject: 'S', from: 'a@b.com',
+        date: '2026-03-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: [], summary: null, hasEmbedding: false, embeddingStrategy: null });
+      db.upsertEmail({ id: 'trashed', threadId: 't3', subject: 'S', from: 'a@b.com',
+        date: '2026-03-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: ['TRASH'], summary: null, hasEmbedding: false, embeddingStrategy: null });
+
+      const results = db.listEmails({});
+      expect(results.map(e => e.id)).toEqual(['inbox']);
+    });
+
     it('filters emails by sender', () => {
       db.upsertEmail({ id: 'a', threadId: 't1', subject: 'S', from: 'alice@example.com',
         date: '2026-03-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
-        labels: [], summary: null, hasEmbedding: false, embeddingStrategy: null });
+        labels: ['INBOX'], summary: null, hasEmbedding: false, embeddingStrategy: null });
       db.upsertEmail({ id: 'b', threadId: 't2', subject: 'S', from: 'bob@example.com',
         date: '2026-03-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
-        labels: [], summary: null, hasEmbedding: false, embeddingStrategy: null });
+        labels: ['INBOX'], summary: null, hasEmbedding: false, embeddingStrategy: null });
 
       const results = db.listEmails({ sender: 'alice' });
       expect(results).toHaveLength(1);

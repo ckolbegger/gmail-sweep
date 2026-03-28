@@ -143,7 +143,7 @@ export function createDb(dbPath: string): DbHandle {
     },
 
     listEmails(params) {
-      const conditions: string[] = [];
+      const conditions: string[] = ["labels LIKE '%INBOX%'"];
       const bindings: unknown[] = [];
 
       if (params.sender) {

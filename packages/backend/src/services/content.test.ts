@@ -90,6 +90,10 @@ describe('content extraction', () => {
       expect(extractBodyText('Try opening this email in another email client.', '<p>Real content</p>')).toBe('Real content');
     });
 
+    it('uses HTML when plain text says "Plain text version not available"', () => {
+      expect(extractBodyText('Plain text version not available.', '<p>Real content</p>')).toBe('Real content');
+    });
+
     it('uses HTML for the CNN stub pattern', () => {
       expect(extractBodyText(CNN_STUB, '<p>Five good things.</p>')).toBe('Five good things.');
     });

@@ -12,7 +12,13 @@ export function createSearchService(db: DbHandle, ai: AiService, embed: EmbedSer
   return {
     async search({ query, limit = 20, strategy }) {
       // Step 1: AI parses the query into structured filters + semantic query
-      const parsed = await ai.parseSearchQuery(query);
+      let parsed;
+      try {
+        parsed = await ai.parseSearchQuery(query);
+      } catch (err) {
+        console.warn('[search] parseSearchQuery failed:', err);
+        throw err;
+      }
 
       // Step 2: SQL filter on structured columns (fast indexed queries)
       const candidates = db.listEmails({
@@ -47,8 +53,8 @@ export function createSearchService(db: DbHandle, ai: AiService, embed: EmbedSer
             emails: results.map(r => r.email),
             scores: results.map(r => r.score),
           };
-        } catch {
-          // Embedding failed — fall back to SQL results only
+        } catch (err) {
+          console.warn('[search] embedding failed, falling back to SQL results:', err);
         }
       }
 

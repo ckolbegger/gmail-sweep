@@ -30,7 +30,8 @@ function isHtmlFallbackStub(text: string): boolean {
   return lower.includes('not support html')
     || lower.includes("doesn't support html")
     || lower.includes('html formatted email')
-    || lower.includes('in another email client');
+    || lower.includes('in another email client')
+    || lower.includes('plain text version not available');
 }
 
 /**
