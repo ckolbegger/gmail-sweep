@@ -33,6 +33,18 @@ describe('api client', () => {
     expect(url).toContain('limit=50');
   });
 
+  it('listEmails includes anchor_unsummarized=true in query string when set', async () => {
+    const emails: Email[] = [];
+    mockFetch.mockReturnValue(mockOk({ emails }));
+
+    await api.listEmails({ anchor_unsummarized: true, limit: 200 });
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining('anchor_unsummarized=true'),
+      expect.any(Object)
+    );
+  });
+
   it('getEmail calls GET /emails/:id', async () => {
     const email = { id: 'msg1' } as Email;
     mockFetch.mockReturnValue(mockOk(email));

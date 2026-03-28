@@ -31,6 +31,7 @@ export function createApiClient(base: string): ApiClient {
       if (params.subject) qs.set('subject', params.subject);
       if (params.limit != null) qs.set('limit', String(params.limit));
       if (params.offset != null) qs.set('offset', String(params.offset));
+      if (params.anchor_unsummarized) qs.set('anchor_unsummarized', 'true');
       const q = qs.toString();
       return request(`${base}/emails${q ? '?' + q : ''}`, {});
     },
