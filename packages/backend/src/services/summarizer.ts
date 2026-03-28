@@ -39,6 +39,7 @@ export function createSummarizerWorker(db: DbHandle, ai: AiService): SummarizerW
           await new Promise(resolve => setTimeout(resolve, backoffMs));
           backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
         } else {
+          console.error(`[summarizer] failed to summarize email ${email.id}:`, err);
           failedIds.add(email.id);
         }
       }
