@@ -127,6 +127,25 @@ describe('SummarizerWorker', () => {
     vi.useRealTimers();
   });
 
+  it('skips an email that causes a non-rate-limit error and does not loop', async () => {
+    const nonRateLimitError = new Error('AI parse failure');
+    vi.mocked(getOrCreateSummary)
+      .mockRejectedValueOnce(nonRateLimitError)
+      .mockResolvedValueOnce({ description: 'd', actionItems: [], keyPoints: [] });
+
+    // Simulate DB always returning e1 (newest unsummarised): e1 fails, second call still returns e1
+    const db = makeDb([mockEmail, mockEmail, null]);
+    const worker = createSummarizerWorker(db, makeAi());
+
+    worker.trigger();
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    // e1 failed → added to failedIds → next call returns e1 again → break
+    // e2 never reached in this run (e1 is newest and always returned first)
+    expect(getOrCreateSummary).toHaveBeenCalledTimes(1);
+    expect(worker.getStatus().status).toBe('idle');
+  });
+
   it('initialises pending count from DB at construction time', () => {
     const db = makeDb([mockEmail, null]);
     const worker = createSummarizerWorker(db, makeAi());

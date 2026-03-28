@@ -25,9 +25,11 @@ export function createSummarizerWorker(db: DbHandle, ai: AiService): SummarizerW
     currentStatus = 'running';
     processed = 0;
     pending = db.countEmailsWithoutSummary();
+    const failedIds = new Set<string>();
     while (true) {
       const email = db.getNextEmailWithoutSummary();
       if (!email) break;
+      if (failedIds.has(email.id)) break; // remaining emails already failed this run
       try {
         await getOrCreateSummary(db, ai, email.id);
         processed++;
@@ -36,8 +38,9 @@ export function createSummarizerWorker(db: DbHandle, ai: AiService): SummarizerW
         if (isRateLimitError(err)) {
           await new Promise(resolve => setTimeout(resolve, backoffMs));
           backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
+        } else {
+          failedIds.add(email.id);
         }
-        // non-rate-limit errors: skip email and continue
       }
     }
     currentStatus = 'idle';
