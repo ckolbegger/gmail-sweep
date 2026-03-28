@@ -14,6 +14,7 @@ export function buildInboxView(renderer: any) {
     titleAlignment: 'left',
   });
   listPane.width = '35%';
+  listPane.flexShrink = 0;
   listPane.height = '100%';
   listPane.overflow = 'hidden';
 
