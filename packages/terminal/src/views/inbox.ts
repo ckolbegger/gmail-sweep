@@ -13,8 +13,7 @@ export function buildInboxView(renderer: any) {
     title: ' Inbox ',
     titleAlignment: 'left',
   });
-  listPane.flexGrow = 1;
-  listPane.flexShrink = 1;
+  listPane.width = '35%';
   listPane.height = '100%';
   listPane.overflow = 'hidden';
 
@@ -29,8 +28,7 @@ export function buildInboxView(renderer: any) {
     title: ' Preview  [Tab: toggle summary/full text] ',
     titleAlignment: 'left',
   });
-  previewPane.width = '40%';
-  previewPane.flexShrink = 0;
+  previewPane.flexGrow = 1;
   previewPane.height = '100%';
   previewPane.overflow = 'hidden';
 
@@ -64,11 +62,14 @@ export function buildInboxView(renderer: any) {
       return;
     }
 
+    const listPaneWidth = Math.floor((process.stdout.columns ?? 120) * 0.35);
+    const subjectWidth = Math.max(10, listPaneWidth - 45);
+
     state.emails.forEach((email, i) => {
       const selected = i === state.selectedIndex;
       const date = email.date.slice(0, 10);
       const from = truncate(email.from, 20);
-      const subject = truncate(email.subject, 38);
+      const subject = truncate(email.subject, subjectWidth);
       const marker = selected ? '▶' : ' ';
       const line = `${marker} ${date}  ${from.padEnd(22)}  ${subject}`;
 
