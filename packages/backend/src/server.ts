@@ -7,11 +7,13 @@ import { createGmailService } from './services/gmail.js';
 import { createAiService } from './services/ai.js';
 import { createEmbedService } from './services/embed.js';
 import { createSearchService } from './services/search.js';
+import { createSummarizerWorker } from './services/summarizer.js';
 import { authRoutes } from './routes/auth.js';
 import { emailRoutes } from './routes/emails.js';
 import { syncRoutes } from './routes/sync.js';
 import { searchRoutes } from './routes/search.js';
 import { configRoutes } from './routes/config.js';
+import { summarizerRoutes } from './routes/summarizer.js';
 
 export async function buildServer(options?: { dbPath?: string }) {
   const app = Fastify({ logger: true });
@@ -29,14 +31,16 @@ export async function buildServer(options?: { dbPath?: string }) {
   const ai = createAiService(config.llm);
   const embed = createEmbedService(config.embedding);
   const search = createSearchService(db, ai, embed);
+  const summarizer = createSummarizerWorker(db, ai);
 
   app.get('/health', async () => ({ status: 'ok' }));
 
   await app.register(authRoutes, { gmail });
   await app.register(emailRoutes, { db, gmail, ai });
-  await app.register(syncRoutes, { db, gmail, embed, config, defaultBatchSize: config.sync.defaultBatchSize });
+  await app.register(syncRoutes, { db, gmail, embed, config, defaultBatchSize: config.sync.defaultBatchSize, summarizer });
   await app.register(searchRoutes, { search });
   await app.register(configRoutes);
+  await app.register(summarizerRoutes, { summarizer });
 
   return app;
 }
