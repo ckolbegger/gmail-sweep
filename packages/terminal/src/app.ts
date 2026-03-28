@@ -1,4 +1,4 @@
-import type { Email } from '@gmail-sweep/shared';
+import type { Email, SummarizerStatus } from '@gmail-sweep/shared';
 
 export type View = 'inbox' | 'email' | 'search';
 export type PreviewMode = 'summary' | 'fulltext';
@@ -14,6 +14,7 @@ export interface AppState {
   searchScores: number[];
   status: string;
   loading: boolean;
+  summarizerStatus: SummarizerStatus | null;
 }
 
 export function createAppState(): AppState {
@@ -28,6 +29,7 @@ export function createAppState(): AppState {
     searchScores: [],
     status: 'Ready',
     loading: false,
+    summarizerStatus: null,
   };
 }
 
@@ -80,6 +82,10 @@ export function setStatus(s: AppState, status: string): AppState {
 
 export function setLoading(s: AppState, loading: boolean): AppState {
   return { ...s, loading };
+}
+
+export function setSummarizerStatus(s: AppState, status: SummarizerStatus): AppState {
+  return { ...s, summarizerStatus: status };
 }
 
 export function updateOpenEmail(s: AppState, updated: Email): AppState {

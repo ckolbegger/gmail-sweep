@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   createAppState, setEmails, nextEmail, prevEmail, selectEmail,
   togglePreview, archiveEmail, deleteEmail, backToInbox, startSearch,
-  setSearchResults, setStatus,
+  setSearchResults, setStatus, setSummarizerStatus,
 } from './app.js';
-import type { Email } from '@gmail-sweep/shared';
+import type { Email, SummarizerStatus } from '@gmail-sweep/shared';
 
 function makeEmail(id: string): Email {
   return {
@@ -104,5 +104,13 @@ describe('app state', () => {
   it('setStatus sets status message', () => {
     const s = setStatus(createAppState(), 'Loading...');
     expect(s.status).toBe('Loading...');
+  });
+
+  it('setSummarizerStatus updates summarizerStatus in state', () => {
+    const state = createAppState();
+    expect(state.summarizerStatus).toBeNull();
+    const status: SummarizerStatus = { status: 'running', processed: 1, pending: 5 };
+    const updated = setSummarizerStatus(state, status);
+    expect(updated.summarizerStatus).toEqual(status);
   });
 });

@@ -89,4 +89,16 @@ describe('api client', () => {
     mockFetch.mockReturnValue(mockErr(404));
     await expect(api.getEmail('bad')).rejects.toThrow('HTTP 404');
   });
+
+  it('getSummarizerStatus fetches /summarizer/status', async () => {
+    mockFetch.mockReturnValue(mockOk({ status: 'running', processed: 2, pending: 3 }));
+    const result = await api.getSummarizerStatus();
+    expect(result.status).toBe('running');
+    expect(result.processed).toBe(2);
+    expect(result.pending).toBe(3);
+    expect(mockFetch).toHaveBeenCalledWith(
+      'http://localhost:3141/summarizer/status',
+      expect.objectContaining({ headers: expect.objectContaining({ 'Accept-Encoding': 'identity' }) })
+    );
+  });
 });

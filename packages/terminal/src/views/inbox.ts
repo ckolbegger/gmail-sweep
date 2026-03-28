@@ -48,6 +48,12 @@ export function buildInboxView(renderer: any) {
   }
 
   function renderList(state: AppState): void {
+    const s = state.summarizerStatus;
+    const summaryInfo = s?.status === 'running'
+      ? `  ·  Summarising: ${s.processed}/${s.pending}`
+      : '';
+    listPane.title = ` Inbox${summaryInfo} `;
+
     for (const child of listScroll.getChildren()) {
       listScroll.remove((child as any).id);
     }

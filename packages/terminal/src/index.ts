@@ -3,7 +3,7 @@ import { createApiClient } from './api.js';
 import {
   createAppState, setEmails, nextEmail, prevEmail, selectEmail, togglePreview,
   archiveEmail, deleteEmail, backToInbox, startSearch, setSearchResults,
-  setStatus, setLoading, updateOpenEmail,
+  setStatus, setLoading, updateOpenEmail, setSummarizerStatus,
 } from './app.js';
 import type { AppState } from './app.js';
 import { buildInboxView } from './views/inbox.js';
@@ -162,5 +162,17 @@ renderer.addInputHandler((seq: string): boolean => {
   return false;
 });
 
+async function pollSummarizerStatus(): Promise<void> {
+  try {
+    const status = await api.getSummarizerStatus();
+    state = setSummarizerStatus(state, status);
+    render();
+  } catch {
+    // backend may not be ready yet — ignore
+  }
+}
+
 await loadEmails();
+await pollSummarizerStatus();
+setInterval(pollSummarizerStatus, 5_000);
 render();
