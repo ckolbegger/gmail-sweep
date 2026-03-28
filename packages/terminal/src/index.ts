@@ -61,6 +61,21 @@ async function loadEmails(): Promise<void> {
   render();
 }
 
+async function loadEmailsAnchored(): Promise<void> {
+  state = setLoading(state, true);
+  state = setStatus(state, 'Loading from unsummarized…');
+  render();
+  try {
+    const { emails } = await api.listEmails({ anchor_unsummarized: true, limit: 200 });
+    state = setEmails(state, emails);
+    state = setStatus(state, `${emails.length} emails (anchored at unsummarized)`);
+  } catch (err) {
+    state = setStatus(state, `Error: ${(err as Error).message}`);
+  }
+  state = setLoading(state, false);
+  render();
+}
+
 async function triggerSync(): Promise<void> {
   state = setStatus(state, 'Syncing…');
   render();
@@ -144,6 +159,7 @@ renderer.addInputHandler((seq: string): boolean => {
       if (seq === 'd') { const e = state.emails[state.selectedIndex]; if (e) triggerDelete(e.id); return true; }
       if (seq === '/') { state = startSearch(state); searchView.focusInput(); render(); return true; }
       if (seq === 'r') { triggerSync(); return true; }
+      if (seq === 'l' || seq === 'L') { loadEmailsAnchored(); return true; }
       if (seq === 'q') { renderer.destroy(); process.exit(0); }
       break;
 
