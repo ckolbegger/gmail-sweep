@@ -13,10 +13,17 @@ export async function emailRoutes(
 
   app.get('/emails', async (request) => {
     const query = request.query as EmailListParams;
+
+    let date_to = query.date_to;
+    if (String(query.anchor_unsummarized) === 'true') {
+      const anchor = db.getNextEmailWithoutSummary();
+      date_to = anchor?.date ?? undefined;
+    }
+
     const emails = db.listEmails({
       sender: query.sender,
       date_from: query.date_from,
-      date_to: query.date_to,
+      date_to,
       subject: query.subject,
       limit: query.limit ? Number(query.limit) : undefined,
       offset: query.offset ? Number(query.offset) : undefined,
