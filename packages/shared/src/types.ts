@@ -99,6 +99,9 @@ export interface AppConfig {
     activeStrategy: string;
     strategies: Record<string, ExtractionStrategy>;
   };
+  terminal?: {
+    summarizerPollIntervalMs?: number;
+  };
 }
 
 export interface ExtractionStrategy {

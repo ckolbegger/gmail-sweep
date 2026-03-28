@@ -188,7 +188,10 @@ async function pollSummarizerStatus(): Promise<void> {
   }
 }
 
+const config = await api.getConfig().catch(() => null);
+const pollIntervalMs = config?.terminal?.summarizerPollIntervalMs ?? 30_000;
+
 await loadEmails();
 await pollSummarizerStatus();
-setInterval(pollSummarizerStatus, 5_000);
+setInterval(pollSummarizerStatus, pollIntervalMs);
 render();

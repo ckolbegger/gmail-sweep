@@ -39,6 +39,9 @@ export function getDefaultConfig(): AppConfig {
         },
       },
     },
+    terminal: {
+      summarizerPollIntervalMs: 30_000,
+    },
   };
 }
 

@@ -1,4 +1,4 @@
-import type { Email, EmailSummary, EmailListParams, SyncResult, SearchResult, SummarizerStatus } from '@gmail-sweep/shared';
+import type { Email, EmailSummary, EmailListParams, SyncResult, SearchResult, SummarizerStatus, AppConfig } from '@gmail-sweep/shared';
 
 export interface ApiClient {
   listEmails(params: EmailListParams): Promise<{ emails: Email[] }>;
@@ -10,6 +10,7 @@ export interface ApiClient {
   search(query: string, limit?: number): Promise<SearchResult>;
   authStatus(): Promise<{ authenticated: boolean; email?: string }>;
   getSummarizerStatus(): Promise<SummarizerStatus>;
+  getConfig(): Promise<AppConfig>;
 }
 
 async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
@@ -53,5 +54,6 @@ export function createApiClient(base: string): ApiClient {
     },
     authStatus() { return request(`${base}/auth/status`, {}); },
     getSummarizerStatus() { return request<SummarizerStatus>(`${base}/summarizer/status`, {}); },
+    getConfig() { return request<AppConfig>(`${base}/config`, {}); },
   };
 }
