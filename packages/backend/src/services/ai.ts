@@ -52,7 +52,7 @@ export function createAiService(llmConfig: LLMConfig): AiService {
 
   return {
     async summarizeEmail(bodyText) {
-      const prompt = SUMMARY_PROMPT(bodyText);
+      const prompt = SUMMARY_PROMPT(bodyText.slice(0, 8000));
 
       if (anthropicClient) {
         const response = await anthropicClient.messages.create({
