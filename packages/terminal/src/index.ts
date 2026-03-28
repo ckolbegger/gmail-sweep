@@ -80,7 +80,7 @@ async function triggerSync(): Promise<void> {
   state = setStatus(state, 'Syncing…');
   render();
   try {
-    const result = await api.sync();
+    const result = await api.sync(syncBatchSize);
     state = setStatus(state, `Sync done — ${result.newEmails} new`);
     await loadEmails();
   } catch (err) {
@@ -190,6 +190,7 @@ async function pollSummarizerStatus(): Promise<void> {
 
 const config = await api.getConfig().catch(() => null);
 const pollIntervalMs = config?.terminal?.summarizerPollIntervalMs ?? 30_000;
+const syncBatchSize = config?.sync?.defaultBatchSize ?? 500;
 
 process.on('SIGWINCH', () => render());
 
