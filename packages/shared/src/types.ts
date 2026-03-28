@@ -113,4 +113,5 @@ export interface EmailListParams {
   subject?: string;
   limit?: number;
   offset?: number;
+  anchor_unsummarized?: boolean;   // if true, backend anchors results at newest unsummarized email
 }
