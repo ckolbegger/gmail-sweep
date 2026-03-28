@@ -25,13 +25,24 @@ export function buildEmbeddingText(
     .replace('{{body_text}}', truncatedBody);
 }
 
+function isHtmlFallbackStub(text: string): boolean {
+  const lower = text.toLowerCase();
+  return lower.includes('not support html')
+    || lower.includes("doesn't support html")
+    || lower.includes('html formatted email')
+    || lower.includes('in another email client');
+}
+
 /**
  * Given an email that may have HTML or plain text, returns the canonical
  * body_text to store. Preference: text/plain > HTML-converted.
+ * Falls back to HTML conversion when plain text is a "no HTML support" stub.
  */
 export function extractBodyText(plainText: string | null, htmlBody: string | null): string {
-  if (plainText && plainText.trim()) return plainText.trim();
+  const plain = plainText?.trim();
+  if (plain && !isHtmlFallbackStub(plain)) return plain;
   if (htmlBody) return htmlToText(htmlBody);
+  if (plain) return plain;
   return '';
 }
 

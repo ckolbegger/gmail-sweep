@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { htmlToText, buildEmbeddingText, cosineSimilarity } from './content.js';
+import { htmlToText, buildEmbeddingText, cosineSimilarity, extractBodyText } from './content.js';
 import type { ExtractionStrategy } from '@gmail-sweep/shared';
 
 describe('content extraction', () => {
@@ -47,6 +47,59 @@ describe('content extraction', () => {
       const longBody = 'x'.repeat(10000);
       const result = buildEmbeddingText({ subject: 'Test', bodyText: longBody }, strategy);
       expect(result.length).toBeLessThanOrEqual(8020); // subject + template overhead
+    });
+  });
+
+  describe('extractBodyText', () => {
+    const CNN_STUB = [
+      'It looks like your email client might not support HTML formatted email.',
+      'Try opening this email in another email client.',
+      'Or, open the following link to view this email in a browser:',
+      'https://example.com/view',
+    ].join('\n');
+
+    it('returns plain text when present and not a stub', () => {
+      expect(extractBodyText('Hello world', '<p>Hello world</p>')).toBe('Hello world');
+    });
+
+    it('falls back to HTML-converted text when plain text is absent', () => {
+      expect(extractBodyText(null, '<p>Hello world</p>')).toBe('Hello world');
+    });
+
+    it('falls back to HTML-converted text when plain text is only whitespace', () => {
+      expect(extractBodyText('   ', '<p>Hello world</p>')).toBe('Hello world');
+    });
+
+    it('returns empty string when both are absent', () => {
+      expect(extractBodyText(null, null)).toBe('');
+    });
+
+    it('uses HTML when plain text contains "not support html"', () => {
+      expect(extractBodyText('Your client does not support HTML email.', '<p>Real content</p>')).toBe('Real content');
+    });
+
+    it('uses HTML when plain text contains "html formatted email"', () => {
+      expect(extractBodyText('email client might not support HTML formatted email.', '<p>Real content</p>')).toBe('Real content');
+    });
+
+    it("uses HTML when plain text contains \"doesn't support html\"", () => {
+      expect(extractBodyText("Your client doesn't support HTML.", '<p>Real content</p>')).toBe('Real content');
+    });
+
+    it('uses HTML when plain text contains "in another email client"', () => {
+      expect(extractBodyText('Try opening this email in another email client.', '<p>Real content</p>')).toBe('Real content');
+    });
+
+    it('uses HTML for the CNN stub pattern', () => {
+      expect(extractBodyText(CNN_STUB, '<p>Five good things.</p>')).toBe('Five good things.');
+    });
+
+    it('returns stub as last resort when no HTML is available', () => {
+      expect(extractBodyText(CNN_STUB, null)).toBe(CNN_STUB.trim());
+    });
+
+    it('stub detection is case-insensitive', () => {
+      expect(extractBodyText('NOT SUPPORT HTML FORMATTED EMAIL', '<p>Real content</p>')).toBe('Real content');
     });
   });
 
