@@ -7,7 +7,7 @@ import type { Email } from '@gmail-sweep/shared';
 
 function makeEmail(id: string, sender: string, subject: string, date: string, bodyText = ''): Email {
   return { id, threadId: `t${id}`, subject, from: sender, date, snippet: '', bodyText,
-    bodyHtml: null, labels: [], summary: null, hasEmbedding: false, embeddingStrategy: null };
+    bodyHtml: null, labels: ['INBOX'], summary: null };
 }
 
 describe('search service', () => {

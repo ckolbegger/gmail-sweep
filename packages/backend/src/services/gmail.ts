@@ -60,8 +60,6 @@ function messageToEmail(msg: GmailMessage): Email {
     bodyHtml: htmlBody,
     labels: msg.labelIds ?? [],
     summary: null,
-    hasEmbedding: false,
-    embeddingStrategy: null,
   };
 }
 

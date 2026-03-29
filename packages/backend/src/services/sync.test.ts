@@ -9,7 +9,7 @@ function makeEmail(id: string, date: string): Email {
   return {
     id, threadId: `t${id}`, subject: `Email ${id}`, from: 'test@example.com',
     date, snippet: '', bodyText: 'body', bodyHtml: null, labels: ['INBOX'],
-    summary: null, hasEmbedding: false, embeddingStrategy: null,
+    summary: null,
   };
 }
 

@@ -10,7 +10,7 @@ function makeEmail(id: string): Email {
   return {
     id, threadId: 'thread1', subject: `Subject ${id}`, from: 'a@b.com',
     date: '2026-01-01T00:00:00Z', snippet: '', bodyText: 'body', bodyHtml: null,
-    labels: ['INBOX'], summary: null, hasEmbedding: false, embeddingStrategy: null,
+    labels: ['INBOX'], summary: null,
   };
 }
 

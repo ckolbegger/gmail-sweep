@@ -2,7 +2,6 @@ import type { DbHandle } from './db.js';
 import type { AiService } from './ai.js';
 import type { EmbedService } from './embed.js';
 import type { SearchRequest, SearchResult } from '@gmail-sweep/shared';
-import { cosineSimilarity } from './content.js';
 
 export interface SearchService {
   search(request: SearchRequest): Promise<SearchResult>;
@@ -10,7 +9,7 @@ export interface SearchService {
 
 export function createSearchService(db: DbHandle, ai: AiService, embed: EmbedService): SearchService {
   return {
-    async search({ query, limit = 20, strategy }) {
+    async search({ query, limit = 20 }) {
       // Step 1: AI parses the query into structured filters + semantic query
       let parsed;
       try {
@@ -33,26 +32,32 @@ export function createSearchService(db: DbHandle, ai: AiService, embed: EmbedSer
         return { emails: [], scores: [] };
       }
 
-      // Step 3: If we have a semantic query, embed it and score candidates
+      // Step 3: If we have a semantic query, embed it and score via vec0 KNN
       if (parsed.semanticQuery.trim()) {
         try {
-          const activeStrategy = strategy ?? 'v1-plain';
           const queryVector = await embed.embedQuery(parsed.semanticQuery);
 
-          // Load stored embeddings for candidates that have them
-          const storedEmbeddings = db.getEmbeddingsForStrategy(activeStrategy, 2000);
-          const embeddingMap = new Map(storedEmbeddings.map(e => [e.emailId, e.vector]));
+          // Get top-k nearest neighbours from vec0
+          const knnResults = db.searchEmbeddings(queryVector, candidatesLimit(limit));
 
-          const scored = candidates.map(email => {
-            const vec = embeddingMap.get(email.id);
-            return { email, score: vec ? cosineSimilarity(queryVector, vec) : 0 };
-          });
+          if (knnResults.length > 0) {
+            const distanceMap = new Map(knnResults.map(r => [r.emailId, r.distance]));
 
-          const results = scored.sort((a, b) => b.score - a.score).slice(0, limit);
-          return {
-            emails: results.map(r => r.email),
-            scores: results.map(r => r.score),
-          };
+            // Filter candidates to those with an embedding, score by distance
+            const scored = candidates
+              .filter(email => distanceMap.has(email.id))
+              .map(email => ({ email, distance: distanceMap.get(email.id)! }));
+
+            if (scored.length > 0) {
+              // Sort ascending by distance (closer = more similar)
+              const results = scored.sort((a, b) => a.distance - b.distance).slice(0, limit);
+              return {
+                emails: results.map(r => r.email),
+                // Convert distance to similarity score (1 - distance for cosine)
+                scores: results.map(r => 1 - r.distance),
+              };
+            }
+          }
         } catch (err) {
           console.warn('[search] embedding failed, falling back to SQL results:', err);
         }

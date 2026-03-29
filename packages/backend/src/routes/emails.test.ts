@@ -44,7 +44,6 @@ const baseEmail = {
   id: 'e1', threadId: 't1', subject: 'Hello', from: 'a@a.com',
   date: '2024-06-01T00:00:00.000Z', snippet: '', bodyText: 'body',
   bodyHtml: null, labels: [], summary: null,
-  hasEmbedding: false, embeddingStrategy: null,
 };
 
 function makeEmailDeps(overrides: {

@@ -16,7 +16,6 @@ const mockEmail = {
   id: 'e1', threadId: 't1', subject: 'Hi', from: 'a@a.com',
   date: '2024-01-01T00:00:00.000Z', snippet: '', bodyText: 'body',
   bodyHtml: null, labels: [], summary: null,
-  hasEmbedding: false, embeddingStrategy: null,
 };
 
 function makeDb(emailSequence: (typeof mockEmail | null)[]): DbHandle {

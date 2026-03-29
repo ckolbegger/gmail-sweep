@@ -9,8 +9,6 @@ export interface Email {
   bodyHtml: string | null;
   labels: string[];
   summary: EmailSummary | null;
-  hasEmbedding: boolean;
-  embeddingStrategy: string | null;
 }
 
 export interface EmailSummary {
@@ -55,7 +53,6 @@ export interface ParsedQuery {
 export interface SearchRequest {
   query: string;
   limit?: number;
-  strategy?: string;
 }
 
 export interface SearchResult {

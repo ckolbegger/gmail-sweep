@@ -20,21 +20,21 @@ describe('generatePendingEmbeddings', () => {
   it('generates embeddings for emails that have none', async () => {
     db.upsertEmail({ id: 'msg1', threadId: 't1', subject: 'Hello', from: 'a@b.com',
       date: '2026-03-01T00:00:00Z', snippet: '', bodyText: 'Hello world', bodyHtml: null,
-      labels: [], summary: null, hasEmbedding: false, embeddingStrategy: null });
+      labels: [], summary: null });
 
     const count = await generatePendingEmbeddings(db, mockEmbed, 'v1-plain', strategy, 10);
 
     expect(count).toBe(1);
     expect(mockEmbed.embedDocument).toHaveBeenCalledOnce();
-    const email = db.getEmail('msg1');
-    expect(email!.hasEmbedding).toBe(true);
-    expect(email!.embeddingStrategy).toBe('v1-plain');
+    // Verify the embedding was stored by checking getEmailsWithoutEmbedding
+    expect(db.getEmailsWithoutEmbedding(10)).toHaveLength(0);
   });
 
-  it('skips emails that already have an embedding for the active strategy', async () => {
+  it('skips emails that already have an embedding', async () => {
     db.upsertEmail({ id: 'msg1', threadId: 't1', subject: 'Hello', from: 'a@b.com',
       date: '2026-03-01T00:00:00Z', snippet: '', bodyText: 'Hello world', bodyHtml: null,
-      labels: [], summary: null, hasEmbedding: true, embeddingStrategy: 'v1-plain' });
+      labels: [], summary: null });
+    db.upsertEmbedding('msg1', new Array(1024).fill(0.5));
 
     const count = await generatePendingEmbeddings(db, mockEmbed, 'v1-plain', strategy, 10);
 
@@ -46,7 +46,7 @@ describe('generatePendingEmbeddings', () => {
     for (let i = 0; i < 5; i++) {
       db.upsertEmail({ id: `msg${i}`, threadId: `t${i}`, subject: `Email ${i}`, from: 'a@b.com',
         date: '2026-03-01T00:00:00Z', snippet: '', bodyText: 'body', bodyHtml: null,
-        labels: [], summary: null, hasEmbedding: false, embeddingStrategy: null });
+        labels: [], summary: null });
     }
 
     const count = await generatePendingEmbeddings(db, mockEmbed, 'v1-plain', strategy, 3);

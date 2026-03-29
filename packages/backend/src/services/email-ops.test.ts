@@ -7,8 +7,7 @@ import type { Email, EmailSummary } from '@gmail-sweep/shared';
 const makeEmail = (overrides: Partial<Email> = {}): Email => ({
   id: 'msg1', threadId: 't1', subject: 'Test', from: 'a@b.com',
   date: '2026-03-01T00:00:00Z', snippet: '', bodyText: 'Hello world',
-  bodyHtml: null, labels: [], summary: null, hasEmbedding: false,
-  embeddingStrategy: null, ...overrides,
+  bodyHtml: null, labels: [], summary: null, ...overrides,
 });
 
 const mockSummary: EmailSummary = {

@@ -9,19 +9,24 @@ export interface DbHandle {
   updateSummary(id: string, summary: EmailSummary): void;
   archiveEmail(id: string): void;
   trashEmail(id: string): void;
-  markEmbedded(id: string, strategy: string): void;
-  upsertEmbedding(emailId: string, strategy: string, vector: number[]): void;
-  getEmbeddingsForStrategy(strategy: string, limit: number): Array<{ emailId: string; vector: number[] }>;
+  upsertEmbedding(emailId: string, vector: number[]): void;
+  searchEmbeddings(queryVector: number[], k: number): Array<{ emailId: string; distance: number }>;
   getSyncState(): Pick<SyncStatus, 'totalSynced' | 'newestDate' | 'oldestDate'>;
   updateSyncState(state: { newestDate: string; oldestDate: string; totalSynced: number }): void;
   listGaps(): Gap[];
   createGap(gap: { newerBoundary: string; olderBoundary: string; estimatedCount: number }): Gap;
   deleteGap(id: number): void;
   updateGapBoundary(id: number, update: { olderBoundary: string; estimatedCount: number }): void;
-  getEmailsWithoutEmbedding(strategy: string, limit: number): Email[];
+  getEmailsWithoutEmbedding(limit: number): Email[];
   getNextEmailWithoutSummary(): Email | null;
   countEmailsWithoutSummary(): number;
   close(): void;
+}
+
+function vectorToBuffer(vector: number[]): Buffer {
+  const buf = Buffer.allocUnsafe(vector.length * 4);
+  for (let i = 0; i < vector.length; i++) buf.writeFloatLE(vector[i]!, i * 4);
+  return buf;
 }
 
 function applySchema(db: Database.Database): void {
@@ -37,8 +42,6 @@ function applySchema(db: Database.Database): void {
       body_html         TEXT,
       labels            TEXT NOT NULL DEFAULT '[]',
       summary           TEXT,
-      has_embedding     INTEGER NOT NULL DEFAULT 0,
-      embedding_strategy TEXT,
       synced_at         TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -67,18 +70,47 @@ function applySchema(db: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_gaps_boundaries
       ON sync_gaps(newer_boundary, older_boundary);
-
-    -- email_embeddings: stores one vector per (email_id, strategy) pair.
-    -- sqlite-vec vec0 does not support composite primary keys, so we use a
-    -- conventional table with a unique index and store the vector as a BLOB.
-    -- vec_distance_cosine() works on BLOB float arrays without a vec0 virtual table.
-    CREATE TABLE IF NOT EXISTS email_embeddings (
-      email_id  TEXT NOT NULL,
-      strategy  TEXT NOT NULL,
-      vector    BLOB NOT NULL,
-      PRIMARY KEY (email_id, strategy)
-    );
   `);
+
+  // Create vec0 virtual table (requires sqlite-vec to be loaded)
+  db.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS vec_embeddings
+      USING vec0(embedding float[1024], +email_id TEXT)
+  `);
+
+  // Migration: copy from legacy email_embeddings table if it exists
+  const legacyExists = (db.prepare(
+    `SELECT name FROM sqlite_master WHERE type='table' AND name='email_embeddings'`
+  ).get() as { name: string } | undefined) !== undefined;
+
+  if (legacyExists) {
+    const legacyRows = db.prepare('SELECT email_id, vector FROM email_embeddings').all() as Array<{
+      email_id: string;
+      vector: Buffer;
+    }>;
+    const insert = db.prepare('INSERT INTO vec_embeddings(email_id, embedding) VALUES (?, ?)');
+    const migrate = db.transaction(() => {
+      for (const row of legacyRows) {
+        try {
+          insert.run(row.email_id, row.vector);
+        } catch {
+          // skip duplicates or invalid rows
+        }
+      }
+    });
+    migrate();
+    db.exec('DROP TABLE email_embeddings');
+  }
+
+  // Migration: drop legacy embedding columns from emails if they exist
+  const emailsCols = (db.prepare("PRAGMA table_info(emails)").all() as Array<{ name: string }>)
+    .map(c => c.name);
+  if (emailsCols.includes('has_embedding')) {
+    db.exec('ALTER TABLE emails DROP COLUMN has_embedding');
+  }
+  if (emailsCols.includes('embedding_strategy')) {
+    db.exec('ALTER TABLE emails DROP COLUMN embedding_strategy');
+  }
 }
 
 function rowToEmail(row: Record<string, unknown>): Email {
@@ -93,8 +125,6 @@ function rowToEmail(row: Record<string, unknown>): Email {
     bodyHtml: (row.body_html as string) ?? null,
     labels: JSON.parse((row.labels as string) ?? '[]') as string[],
     summary: row.summary ? (JSON.parse(row.summary as string) as EmailSummary) : null,
-    hasEmbedding: Boolean(row.has_embedding),
-    embeddingStrategy: (row.embedding_strategy as string) ?? null,
   };
 }
 
@@ -113,8 +143,8 @@ export function createDb(dbPath: string): DbHandle {
   return {
     upsertEmail(email) {
       db.prepare(`
-        INSERT INTO emails (id, thread_id, subject, sender, date, snippet, body_text, body_html, labels, summary, has_embedding, embedding_strategy)
-        VALUES (@id, @threadId, @subject, @sender, @date, @snippet, @bodyText, @bodyHtml, @labels, @summary, @hasEmbedding, @embeddingStrategy)
+        INSERT INTO emails (id, thread_id, subject, sender, date, snippet, body_text, body_html, labels, summary)
+        VALUES (@id, @threadId, @subject, @sender, @date, @snippet, @bodyText, @bodyHtml, @labels, @summary)
         ON CONFLICT(id) DO UPDATE SET
           subject = excluded.subject, sender = excluded.sender, date = excluded.date,
           snippet = excluded.snippet, labels = excluded.labels,
@@ -132,8 +162,6 @@ export function createDb(dbPath: string): DbHandle {
         bodyHtml: email.bodyHtml ?? null,
         labels: JSON.stringify(email.labels),
         summary: email.summary ? JSON.stringify(email.summary) : null,
-        hasEmbedding: email.hasEmbedding ? 1 : 0,
-        embeddingStrategy: email.embeddingStrategy ?? null,
       });
     },
 
@@ -194,11 +222,6 @@ export function createDb(dbPath: string): DbHandle {
       db.prepare('UPDATE emails SET labels = ? WHERE id = ?').run(JSON.stringify(labels), id);
     },
 
-    markEmbedded(id, strategy) {
-      db.prepare('UPDATE emails SET has_embedding = 1, embedding_strategy = ? WHERE id = ?')
-        .run(strategy, id);
-    },
-
     getSyncState() {
       const row = db.prepare('SELECT * FROM sync_state WHERE id = 1').get() as Record<string, unknown>;
       return {
@@ -245,11 +268,35 @@ export function createDb(dbPath: string): DbHandle {
       `).run(olderBoundary, estimatedCount, id);
     },
 
-    getEmailsWithoutEmbedding(strategy, limit) {
+    upsertEmbedding(emailId, vector) {
+      const buf = vectorToBuffer(vector);
+      // vec0 doesn't support ON CONFLICT UPDATE, so delete-then-insert
+      const existing = db.prepare(
+        'SELECT rowid FROM vec_embeddings WHERE email_id = ?'
+      ).get(emailId) as { rowid: number } | undefined;
+      if (existing) {
+        db.prepare('DELETE FROM vec_embeddings WHERE rowid = ?').run(existing.rowid);
+      }
+      db.prepare('INSERT INTO vec_embeddings(email_id, embedding) VALUES (?, ?)').run(emailId, buf);
+    },
+
+    searchEmbeddings(queryVector, k) {
+      const buf = vectorToBuffer(queryVector);
       const rows = db.prepare(`
-        SELECT * FROM emails WHERE has_embedding = 0 OR embedding_strategy != ?
-        ORDER BY date DESC LIMIT ?
-      `).all(strategy, limit) as Record<string, unknown>[];
+        SELECT email_id, distance FROM vec_embeddings
+        WHERE embedding MATCH ? AND k = ?
+        ORDER BY distance
+      `).all(buf, k) as Array<{ email_id: string; distance: number }>;
+      return rows.map(r => ({ emailId: r.email_id, distance: r.distance }));
+    },
+
+    getEmailsWithoutEmbedding(limit) {
+      const rows = db.prepare(`
+        SELECT e.* FROM emails e
+        LEFT JOIN vec_embeddings ve ON ve.email_id = e.id
+        WHERE ve.email_id IS NULL
+        ORDER BY e.date DESC LIMIT ?
+      `).all(limit) as Record<string, unknown>[];
       return rows.map(rowToEmail);
     },
 
@@ -265,28 +312,6 @@ export function createDb(dbPath: string): DbHandle {
         'SELECT COUNT(*) as count FROM emails WHERE summary IS NULL'
       ).get() as { count: number };
       return row.count;
-    },
-
-    upsertEmbedding(emailId, strategy, vector) {
-      // Store float array as raw BLOB (4 bytes per float, little-endian)
-      const buf = Buffer.allocUnsafe(vector.length * 4);
-      for (let i = 0; i < vector.length; i++) buf.writeFloatLE(vector[i]!, i * 4);
-      db.prepare(`
-        INSERT INTO email_embeddings (email_id, strategy, vector)
-        VALUES (?, ?, ?)
-        ON CONFLICT(email_id, strategy) DO UPDATE SET vector = excluded.vector
-      `).run(emailId, strategy, buf);
-    },
-
-    getEmbeddingsForStrategy(strategy, limit) {
-      const rows = db.prepare(
-        'SELECT email_id, vector FROM email_embeddings WHERE strategy = ? LIMIT ?'
-      ).all(strategy, limit) as Array<{ email_id: string; vector: Buffer }>;
-      return rows.map(r => {
-        const vector: number[] = [];
-        for (let i = 0; i < r.vector.length; i += 4) vector.push(r.vector.readFloatLE(i));
-        return { emailId: r.email_id, vector };
-      });
     },
 
     close() {

@@ -21,8 +21,6 @@ describe('database service', () => {
         bodyHtml: null,
         labels: ['INBOX'],
         summary: null,
-        hasEmbedding: false,
-        embeddingStrategy: null,
       });
 
       const email = db.getEmail('msg1');
@@ -35,10 +33,10 @@ describe('database service', () => {
     it('lists emails sorted by date descending', () => {
       db.upsertEmail({ id: 'old', threadId: 't1', subject: 'Old', from: 'a@b.com',
         date: '2026-01-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
-        labels: ['INBOX'], summary: null, hasEmbedding: false, embeddingStrategy: null });
+        labels: ['INBOX'], summary: null });
       db.upsertEmail({ id: 'new', threadId: 't2', subject: 'New', from: 'a@b.com',
         date: '2026-03-23T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
-        labels: ['INBOX'], summary: null, hasEmbedding: false, embeddingStrategy: null });
+        labels: ['INBOX'], summary: null });
 
       const emails = db.listEmails({});
       expect(emails[0].id).toBe('new');
@@ -48,13 +46,13 @@ describe('database service', () => {
     it('excludes archived and trashed emails', () => {
       db.upsertEmail({ id: 'inbox', threadId: 't1', subject: 'S', from: 'a@b.com',
         date: '2026-03-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
-        labels: ['INBOX'], summary: null, hasEmbedding: false, embeddingStrategy: null });
+        labels: ['INBOX'], summary: null });
       db.upsertEmail({ id: 'archived', threadId: 't2', subject: 'S', from: 'a@b.com',
         date: '2026-03-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
-        labels: [], summary: null, hasEmbedding: false, embeddingStrategy: null });
+        labels: [], summary: null });
       db.upsertEmail({ id: 'trashed', threadId: 't3', subject: 'S', from: 'a@b.com',
         date: '2026-03-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
-        labels: ['TRASH'], summary: null, hasEmbedding: false, embeddingStrategy: null });
+        labels: ['TRASH'], summary: null });
 
       const results = db.listEmails({});
       expect(results.map(e => e.id)).toEqual(['inbox']);
@@ -63,10 +61,10 @@ describe('database service', () => {
     it('filters emails by sender', () => {
       db.upsertEmail({ id: 'a', threadId: 't1', subject: 'S', from: 'alice@example.com',
         date: '2026-03-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
-        labels: ['INBOX'], summary: null, hasEmbedding: false, embeddingStrategy: null });
+        labels: ['INBOX'], summary: null });
       db.upsertEmail({ id: 'b', threadId: 't2', subject: 'S', from: 'bob@example.com',
         date: '2026-03-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
-        labels: ['INBOX'], summary: null, hasEmbedding: false, embeddingStrategy: null });
+        labels: ['INBOX'], summary: null });
 
       const results = db.listEmails({ sender: 'alice' });
       expect(results).toHaveLength(1);
@@ -76,7 +74,7 @@ describe('database service', () => {
     it('updates summary on existing email', () => {
       db.upsertEmail({ id: 'msg1', threadId: 't1', subject: 'S', from: 'a@b.com',
         date: '2026-03-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
-        labels: [], summary: null, hasEmbedding: false, embeddingStrategy: null });
+        labels: [], summary: null });
 
       db.updateSummary('msg1', { description: 'A test', actionItems: [], keyPoints: [] });
 
@@ -88,7 +86,7 @@ describe('database service', () => {
       db.upsertEmail({
         id: 'msg1', threadId: 't1', subject: 'Test', from: 'a@b.com',
         date: '2026-03-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
-        labels: ['INBOX', 'UNREAD'], summary: null, hasEmbedding: false, embeddingStrategy: null,
+        labels: ['INBOX', 'UNREAD'], summary: null,
       });
 
       db.archiveEmail('msg1');
@@ -106,7 +104,7 @@ describe('database service', () => {
       db.upsertEmail({
         id: 'msg2', threadId: 't2', subject: 'Test', from: 'a@b.com',
         date: '2026-03-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
-        labels: ['INBOX'], summary: null, hasEmbedding: false, embeddingStrategy: null,
+        labels: ['INBOX'], summary: null,
       });
 
       db.trashEmail('msg2');
@@ -119,7 +117,7 @@ describe('database service', () => {
       db.upsertEmail({
         id: 'msg3', threadId: 't3', subject: 'Test', from: 'a@b.com',
         date: '2026-03-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
-        labels: ['TRASH'], summary: null, hasEmbedding: false, embeddingStrategy: null,
+        labels: ['TRASH'], summary: null,
       });
 
       db.trashEmail('msg3');
@@ -179,13 +177,11 @@ describe('database service', () => {
         id: 'a', threadId: 't1', subject: 'Older', from: 'x@x.com',
         date: '2024-01-01T00:00:00.000Z', snippet: '', bodyText: 'body',
         bodyHtml: null, labels: [], summary: null,
-        hasEmbedding: false, embeddingStrategy: null,
       });
       db.upsertEmail({
         id: 'b', threadId: 't2', subject: 'Newer', from: 'y@y.com',
         date: '2024-06-01T00:00:00.000Z', snippet: '', bodyText: 'body',
         bodyHtml: null, labels: [], summary: null,
-        hasEmbedding: false, embeddingStrategy: null,
       });
     });
 
@@ -205,6 +201,70 @@ describe('database service', () => {
       expect(db.countEmailsWithoutSummary()).toBe(2);
       db.updateSummary('a', { description: 'd', actionItems: [], keyPoints: [] });
       expect(db.countEmailsWithoutSummary()).toBe(1);
+    });
+  });
+
+  describe('vec_embeddings', () => {
+    function makeVec(val: number): number[] {
+      // 1024-dim vector, all components equal to val (unit-normalized for cosine)
+      const dim = 1024;
+      const norm = Math.sqrt(dim * val * val);
+      return new Array(dim).fill(val / norm);
+    }
+
+    beforeEach(() => {
+      db.upsertEmail({ id: 'e1', threadId: 't1', subject: 'A', from: 'a@b.com',
+        date: '2026-03-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: [], summary: null });
+      db.upsertEmail({ id: 'e2', threadId: 't2', subject: 'B', from: 'b@b.com',
+        date: '2026-03-02T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: [], summary: null });
+      db.upsertEmail({ id: 'e3', threadId: 't3', subject: 'C', from: 'c@b.com',
+        date: '2026-03-03T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: [], summary: null });
+    });
+
+    it('searchEmbeddings returns top-k results ordered by distance', () => {
+      const v1 = makeVec(1.0);   // all positive
+      const v2 = makeVec(-1.0);  // all negative (opposite direction)
+      const v3 = makeVec(0.5);   // same direction as v1, same angle
+
+      db.upsertEmbedding('e1', v1);
+      db.upsertEmbedding('e2', v2);
+      db.upsertEmbedding('e3', v3);
+
+      // Query with v1 — e1 and e3 should be closest (distance ~0), e2 furthest
+      const results = db.searchEmbeddings(v1, 3);
+      expect(results).toHaveLength(3);
+      expect(results[0].emailId).not.toBe('e2');   // e2 is furthest
+      expect(results[2].emailId).toBe('e2');        // e2 should be last
+      // distances should be ascending
+      expect(results[0].distance).toBeLessThanOrEqual(results[1].distance);
+      expect(results[1].distance).toBeLessThanOrEqual(results[2].distance);
+    });
+
+    it('upsertEmbedding is idempotent — only one row, second vector wins', () => {
+      const v1 = makeVec(1.0);
+      const v2 = makeVec(-1.0);
+
+      db.upsertEmbedding('e1', v1);
+      db.upsertEmbedding('e1', v2);  // overwrite
+
+      // Query with v2 — e1 should be very close (small distance)
+      const results = db.searchEmbeddings(v2, 1);
+      expect(results).toHaveLength(1);
+      expect(results[0].emailId).toBe('e1');
+      expect(results[0].distance).toBeLessThan(0.01);
+    });
+
+    it('getEmailsWithoutEmbedding returns only emails with no embedding', () => {
+      db.upsertEmbedding('e1', makeVec(1.0));
+      db.upsertEmbedding('e2', makeVec(0.5));
+      // e3 has no embedding
+
+      const pending = db.getEmailsWithoutEmbedding(10);
+      expect(pending).toHaveLength(1);
+      expect(pending[0].id).toBe('e3');
     });
   });
 });
