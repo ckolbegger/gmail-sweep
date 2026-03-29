@@ -73,9 +73,16 @@ function applySchema(db: Database.Database): void {
   `);
 
   // Create vec0 virtual table (requires sqlite-vec to be loaded)
+  // If it exists without cosine distance_metric, drop it so it gets recreated correctly
+  const existingVec = db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type='table' AND name='vec_embeddings'"
+  ).get() as { sql: string } | undefined;
+  if (existingVec && !existingVec.sql.includes('cosine')) {
+    db.exec('DROP TABLE vec_embeddings');
+  }
   db.exec(`
     CREATE VIRTUAL TABLE IF NOT EXISTS vec_embeddings
-      USING vec0(embedding float[1024], +email_id TEXT)
+      USING vec0(embedding float[1024] distance_metric=cosine, +email_id TEXT)
   `);
 
   // Migration: copy from legacy email_embeddings table if it exists
@@ -132,11 +139,7 @@ export function createDb(dbPath: string): DbHandle {
   const db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
 
-  try {
-    sqliteVec.load(db);
-  } catch {
-    // sqlite-vec not available — vector search will not work
-  }
+  sqliteVec.load(db);
 
   applySchema(db);
 
@@ -270,14 +273,17 @@ export function createDb(dbPath: string): DbHandle {
 
     upsertEmbedding(emailId, vector) {
       const buf = vectorToBuffer(vector);
-      // vec0 doesn't support ON CONFLICT UPDATE, so delete-then-insert
-      const existing = db.prepare(
-        'SELECT rowid FROM vec_embeddings WHERE email_id = ?'
-      ).get(emailId) as { rowid: number } | undefined;
-      if (existing) {
-        db.prepare('DELETE FROM vec_embeddings WHERE rowid = ?').run(existing.rowid);
-      }
-      db.prepare('INSERT INTO vec_embeddings(email_id, embedding) VALUES (?, ?)').run(emailId, buf);
+      // vec0 doesn't support ON CONFLICT UPDATE, so delete-then-insert (wrapped in transaction)
+      const doUpsert = db.transaction((eid: string, b: Buffer) => {
+        const existing = db.prepare(
+          'SELECT rowid FROM vec_embeddings WHERE email_id = ?'
+        ).get(eid) as { rowid: number } | undefined;
+        if (existing) {
+          db.prepare('DELETE FROM vec_embeddings WHERE rowid = ?').run(existing.rowid);
+        }
+        db.prepare('INSERT INTO vec_embeddings(email_id, embedding) VALUES (?, ?)').run(eid, b);
+      });
+      doUpsert(emailId, buf);
     },
 
     searchEmbeddings(queryVector, k) {
