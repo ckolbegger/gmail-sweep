@@ -3,7 +3,10 @@ import { createStatusRouter } from "./routes/status";
 import { createAuthRouter } from "./routes/auth";
 import { createEmailRouter } from "./routes/emails";
 import { createSyncRouter } from "./routes/sync";
+import { createSearchRouter } from "./routes/search";
 import { SyncService } from "./services/sync";
+import { SearchService } from "./services/search";
+import type { EmbeddingProvider } from "./services/search";
 import type Database from "bun:sqlite";
 import type { OAuthClient } from "./auth/oauth";
 import type { TokenStore } from "./auth/token-store";
@@ -14,6 +17,7 @@ export interface ServerDeps {
   oauth?: OAuthClient | null;
   tokenStore?: TokenStore;
   gmailAdapter?: GmailAdapter;
+  embeddingProvider?: EmbeddingProvider;
 }
 
 export function createApp(deps: ServerDeps): Hono {
@@ -30,6 +34,9 @@ export function createApp(deps: ServerDeps): Hono {
   }
 
   app.route("/", createEmailRouter({ db, gmailAdapter: deps.gmailAdapter }));
+
+  const searchService = new SearchService(db, deps.embeddingProvider);
+  app.route("/", createSearchRouter(searchService));
 
   if (deps.gmailAdapter) {
     const syncService = new SyncService(db, deps.gmailAdapter);

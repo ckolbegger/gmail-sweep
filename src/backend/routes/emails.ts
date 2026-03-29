@@ -34,7 +34,7 @@ export function createEmailRouter(deps: { db: Database; gmailAdapter?: GmailAdap
 
     const emails = db
       .query(
-        `SELECT id, thread_id, sender, subject, date_received, is_read, is_starred
+        `SELECT id, thread_id, sender, subject, date_received, is_read, is_starred, ai_status
          FROM emails ${whereClause}
          ORDER BY date_received DESC
          LIMIT ? OFFSET ?`
@@ -67,6 +67,8 @@ export function createEmailRouter(deps: { db: Database; gmailAdapter?: GmailAdap
       is_starred: email.is_starred === 1,
       labels: JSON.parse(email.labels || "[]"),
       recipients: JSON.parse(email.recipients || "[]"),
+      action_items: email.action_items ? JSON.parse(email.action_items) : null,
+      key_points: email.key_points ? JSON.parse(email.key_points) : null,
     });
   });
 

@@ -33,6 +33,24 @@ export interface EmailListResponse {
   total: number;
 }
 
+export interface SearchResponse {
+  results: SearchResult[];
+  total: number;
+}
+
+export interface SearchResult {
+  id: string;
+  thread_id: string;
+  sender: string;
+  recipients: string;
+  subject: string;
+  date_received: number;
+  is_read: boolean;
+  is_starred: boolean;
+  summary: string | null;
+  score: number | null;
+}
+
 export class ApiClient {
   private baseUrl: string;
 
@@ -126,5 +144,16 @@ export class ApiClient {
       method: "POST",
     });
     if (!res.ok) throw new Error(`Mark unread failed: ${res.status}`);
+  }
+
+  async search(query: string, limit?: number): Promise<SearchResponse> {
+    const qs = limit ? `?limit=${limit}` : "";
+    const res = await fetch(`${this.baseUrl}/search${qs}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query }),
+    });
+    if (!res.ok) throw new Error(`Search failed: ${res.status}`);
+    return res.json();
   }
 }

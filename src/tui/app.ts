@@ -3,6 +3,7 @@ import { ApiClient, type EmailSummary } from "./api";
 import { createEmailList } from "./components/email-list";
 import { createDetailPanel } from "./components/detail-panel";
 import { createStatusBar, type StatusBarState } from "./components/status-bar";
+import { createSearchBar } from "./components/search-bar";
 
 export type AppMode = "inbox" | "search";
 
@@ -16,6 +17,7 @@ export function createTuiApp(apiClient: ApiClient) {
   const emailList = createEmailList(screen);
   const detailPanel = createDetailPanel(screen);
   const statusBar = createStatusBar(screen);
+  const searchBar = createSearchBar(screen);
 
   let running = true;
   let currentMode: AppMode = "inbox";
@@ -25,6 +27,7 @@ export function createTuiApp(apiClient: ApiClient) {
 
   // Global keybindings
   screen.key(["q", "C-c"], () => {
+    if (searchBar.isActive()) return; // don't quit while searching
     running = false;
     if (statusInterval) clearInterval(statusInterval);
     screen.destroy();
@@ -32,16 +35,19 @@ export function createTuiApp(apiClient: ApiClient) {
   });
 
   screen.key(["j", "down"], () => {
+    if (searchBar.isActive()) return;
     emailList.selectDown();
     loadSelectedEmail();
   });
 
   screen.key(["k", "up"], () => {
+    if (searchBar.isActive()) return;
     emailList.selectUp();
     loadSelectedEmail();
   });
 
   screen.key(["enter"], () => {
+    if (searchBar.isActive()) return;
     if (detailPanel.isVisible()) {
       detailPanel.setFullWidth();
     } else {
@@ -50,8 +56,60 @@ export function createTuiApp(apiClient: ApiClient) {
   });
 
   screen.key(["tab"], () => {
+    if (searchBar.isActive()) return;
     detailPanel.toggleView();
   });
+
+  // '/' opens search bar
+  screen.key(["/"], () => {
+    if (searchBar.isActive()) return;
+    searchBar.activate({
+      onSubmit: async (query: string) => {
+        if (!query) {
+          currentMode = "inbox";
+          loadEmails();
+          return;
+        }
+        currentMode = "search";
+        await performSearch(query);
+      },
+      onCancel: () => {
+        if (currentMode === "search") {
+          currentMode = "inbox";
+          loadEmails();
+        }
+      },
+    });
+  });
+
+  // Escape returns to inbox from search
+  screen.key(["escape"], () => {
+    if (searchBar.isActive()) return;
+    if (currentMode === "search") {
+      currentMode = "inbox";
+      loadEmails();
+    }
+  });
+
+  async function performSearch(query: string) {
+    try {
+      statusBar.render({ mode: "search" } as StatusBarState);
+      const response = await apiClient.search(query);
+      emailList.setEmails(
+        response.results.map((r) => ({
+          id: r.id,
+          sender: r.sender,
+          subject: r.subject,
+          date_received: r.date_received,
+          is_read: r.is_read,
+          is_starred: r.is_starred,
+        }))
+      );
+      loadSelectedEmail();
+    } catch {
+      statusBar.render({ error: "Search failed" });
+    }
+  }
 
   async function loadEmails() {
     try {
@@ -86,6 +144,7 @@ export function createTuiApp(apiClient: ApiClient) {
         authStatus: authStatus.authorized ? "authorized" : "unauthorized",
         unreadCount: syncStatus.unreadCount,
         totalEmails: syncStatus.totalEmails,
+        mode: currentMode,
       });
     } catch {
       statusBar.render({ error: "Connection error" });
@@ -102,5 +161,6 @@ export function createTuiApp(apiClient: ApiClient) {
     screen,
     getRunning: () => running,
     loadEmails,
+    searchBar,
   };
 }

@@ -116,5 +116,36 @@ describe("Email routes", () => {
       const res = await app.request("/emails/nonexistent");
       expect(res.status).toBe(404);
     });
+
+    it("should include AI fields: ai_status, summary, action_items, key_points", async () => {
+      db.run(
+        `UPDATE emails SET ai_status = 'done', summary = 'Test summary', action_items = '["Do X"]', key_points = '["Y is important"]' WHERE id = 'm1'`
+      );
+      const res = await app.request("/emails/m1");
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.ai_status).toBe("done");
+      expect(body.summary).toBe("Test summary");
+      expect(body.action_items).toEqual(["Do X"]);
+      expect(body.key_points).toEqual(["Y is important"]);
+    });
+
+    it("should include ai_status as pending when no AI processing done", async () => {
+      const res = await app.request("/emails/m1");
+      const body = await res.json();
+      expect(body.ai_status).toBe("pending");
+    });
+  });
+
+  describe("GET /emails (AI fields)", () => {
+    it("should include ai_status in list response", async () => {
+      db.run(`UPDATE emails SET ai_status = 'done' WHERE id = 'm1'`);
+      const res = await app.request("/emails");
+      const body = await res.json();
+      const m1 = body.emails.find((e: any) => e.id === "m1");
+      expect(m1.ai_status).toBe("done");
+      const m2 = body.emails.find((e: any) => e.id === "m2");
+      expect(m2.ai_status).toBe("pending");
+    });
   });
 });

@@ -6,7 +6,7 @@ import { createApp } from "./server";
 const configPath = process.argv[2] || "config.toml";
 const config = loadConfig(configPath);
 const db = initDb("gmail-sweep.db");
-const app = createApp(db);
+const app = createApp({ db });
 
 console.log(`Starting Gmail Sweep backend on ${config.server.host}:${config.server.port}`);
 
