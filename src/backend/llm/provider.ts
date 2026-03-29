@@ -12,3 +12,7 @@ export interface SummaryResult {
   keyPoints: string[];
   model: string;
 }
+
+export interface EmbeddingProvider {
+  embed(text: string): Promise<number[]>;
+}
