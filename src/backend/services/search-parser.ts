@@ -87,6 +87,8 @@ export function buildSqlFilters(
     clauses.push("is_read = 0");
   } else if (operators.is === "read") {
     clauses.push("is_read = 1");
+  } else if (operators.is === "starred") {
+    clauses.push("is_starred = 1");
   }
 
   if (operators.has === "actions") {
