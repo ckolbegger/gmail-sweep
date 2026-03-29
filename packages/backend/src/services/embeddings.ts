@@ -12,7 +12,6 @@ import type { ExtractionStrategy } from '@gmail-sweep/shared';
 export async function generatePendingEmbeddings(
   db: DbHandle,
   embedService: EmbedService,
-  strategyId: string,
   strategy: ExtractionStrategy,
   batchLimit: number
 ): Promise<number> {

@@ -22,7 +22,7 @@ describe('generatePendingEmbeddings', () => {
       date: '2026-03-01T00:00:00Z', snippet: '', bodyText: 'Hello world', bodyHtml: null,
       labels: [], summary: null });
 
-    const count = await generatePendingEmbeddings(db, mockEmbed, 'v1-plain', strategy, 10);
+    const count = await generatePendingEmbeddings(db, mockEmbed, strategy,10);
 
     expect(count).toBe(1);
     expect(mockEmbed.embedDocument).toHaveBeenCalledOnce();
@@ -36,7 +36,7 @@ describe('generatePendingEmbeddings', () => {
       labels: [], summary: null });
     db.upsertEmbedding('msg1', new Array(1024).fill(0.5));
 
-    const count = await generatePendingEmbeddings(db, mockEmbed, 'v1-plain', strategy, 10);
+    const count = await generatePendingEmbeddings(db, mockEmbed, strategy,10);
 
     expect(count).toBe(0);
     expect(mockEmbed.embedDocument).not.toHaveBeenCalled();
@@ -49,7 +49,7 @@ describe('generatePendingEmbeddings', () => {
         labels: [], summary: null });
     }
 
-    const count = await generatePendingEmbeddings(db, mockEmbed, 'v1-plain', strategy, 3);
+    const count = await generatePendingEmbeddings(db, mockEmbed, strategy,3);
 
     expect(count).toBe(3);
     expect(mockEmbed.embedDocument).toHaveBeenCalledTimes(3);

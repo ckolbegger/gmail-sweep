@@ -145,7 +145,7 @@ export async function runSyncWithEmbeddings(
     const strategy = strategies[activeStrategy];
     if (strategy) {
       embeddingsGenerated = await generatePendingEmbeddings(
-        db, embed, activeStrategy, strategy, EMBEDDING_BATCH_SIZE
+        db, embed, strategy, EMBEDDING_BATCH_SIZE
       );
     }
   }
