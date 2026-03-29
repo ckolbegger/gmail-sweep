@@ -1,1 +1,8 @@
 .superpowers/
+node_modules/
+dist/
+*.db
+*.db-journal
+config.toml
+credentials.json
+token.json

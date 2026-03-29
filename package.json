@@ -1,0 +1,19 @@
+{
+  "name": "gmail-sweep",
+  "module": "src/backend/index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest",
+    "sqlite-vec": "^0.1.7"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@types/blessed": "^0.1.27",
+    "blessed": "^0.1.81",
+    "hono": "^4.12.9",
+    "smol-toml": "^1.6.1"
+  }
+}

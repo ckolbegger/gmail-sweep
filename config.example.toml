@@ -1,0 +1,17 @@
+[server]
+host = "127.0.0.1"
+port = 3000
+
+[auth]
+credentials_path = "~/.gmail-sweep/credentials.json"
+token_path = "~/.gmail-sweep/token.json"
+
+[sync]
+batch_size = 100
+poll_interval_seconds = 300
+
+[llm]
+provider = "openai"
+api_key = "sk-your-key-here"
+model = "gpt-4o-mini"
+base_url = "https://api.openai.com/v1"
