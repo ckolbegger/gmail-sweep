@@ -5,4 +5,5 @@ export const THEME = {
   muted: "#565f89",
   error: "#f7768e",
   success: "#9ece6a",
+  warning: "#e0af68",
 } as const;

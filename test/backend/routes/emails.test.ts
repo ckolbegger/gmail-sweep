@@ -11,7 +11,7 @@ describe("Email routes", () => {
 
   beforeEach(() => {
     ({ db, cleanup } = createTestDb());
-    app = new Hono().route("/", createEmailRouter(db));
+    app = new Hono().route("/", createEmailRouter({ db }));
 
     // Seed test data
     db.run(

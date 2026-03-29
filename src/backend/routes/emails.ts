@@ -1,7 +1,9 @@
 import { Hono } from "hono";
 import type Database from "bun:sqlite";
+import type { GmailAdapter } from "@backend/gmail/adapter";
 
-export function createEmailRouter(db: Database) {
+export function createEmailRouter(deps: { db: Database; gmailAdapter?: GmailAdapter }) {
+  const { db, gmailAdapter } = deps;
   const router = new Hono();
 
   router.get("/emails", (c) => {
@@ -66,6 +68,92 @@ export function createEmailRouter(db: Database) {
       labels: JSON.parse(email.labels || "[]"),
       recipients: JSON.parse(email.recipients || "[]"),
     });
+  });
+
+  // Helper: require gmailAdapter or return 503
+  const requireAdapter = (c: any) => {
+    if (!gmailAdapter) {
+      return c.json({ error: "Gmail adapter not configured" }, 503);
+    }
+    return null;
+  };
+
+  // Helper: find email or return 404
+  const findEmail = (c: any) => {
+    const id = c.req.param("id");
+    const email = db.query("SELECT id FROM emails WHERE id = ?").get(id);
+    if (!email) {
+      return { error: c.json({ error: "Email not found" }, 404) as any, email: null };
+    }
+    return { error: null, email };
+  };
+
+  router.post("/emails/:id/archive", async (c) => {
+    const adapterError = requireAdapter(c);
+    if (adapterError) return adapterError;
+
+    const { error, email } = findEmail(c);
+    if (error) return error;
+
+    const id = c.req.param("id");
+    try {
+      await gmailAdapter!.archive(id);
+    } catch {
+      return c.json({ error: "Gmail API error" }, 502);
+    }
+    db.run("DELETE FROM emails WHERE id = ?", [id]);
+    return c.json({ success: true });
+  });
+
+  router.post("/emails/:id/delete", async (c) => {
+    const adapterError = requireAdapter(c);
+    if (adapterError) return adapterError;
+
+    const { error, email } = findEmail(c);
+    if (error) return error;
+
+    const id = c.req.param("id");
+    try {
+      await gmailAdapter!.delete(id);
+    } catch {
+      return c.json({ error: "Gmail API error" }, 502);
+    }
+    db.run("DELETE FROM emails WHERE id = ?", [id]);
+    return c.json({ success: true });
+  });
+
+  router.post("/emails/:id/read", async (c) => {
+    const adapterError = requireAdapter(c);
+    if (adapterError) return adapterError;
+
+    const { error, email } = findEmail(c);
+    if (error) return error;
+
+    const id = c.req.param("id");
+    try {
+      await gmailAdapter!.modifyLabels(id, { addLabelIds: [], removeLabelIds: ["UNREAD"] });
+    } catch {
+      return c.json({ error: "Gmail API error" }, 502);
+    }
+    db.run("UPDATE emails SET is_read = 1 WHERE id = ?", [id]);
+    return c.json({ success: true });
+  });
+
+  router.post("/emails/:id/unread", async (c) => {
+    const adapterError = requireAdapter(c);
+    if (adapterError) return adapterError;
+
+    const { error, email } = findEmail(c);
+    if (error) return error;
+
+    const id = c.req.param("id");
+    try {
+      await gmailAdapter!.modifyLabels(id, { addLabelIds: ["UNREAD"], removeLabelIds: [] });
+    } catch {
+      return c.json({ error: "Gmail API error" }, 502);
+    }
+    db.run("UPDATE emails SET is_read = 0 WHERE id = ?", [id]);
+    return c.json({ success: true });
   });
 
   return router;

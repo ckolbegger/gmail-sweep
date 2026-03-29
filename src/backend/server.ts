@@ -29,7 +29,7 @@ export function createApp(deps: ServerDeps): Hono {
     );
   }
 
-  app.route("/", createEmailRouter(db));
+  app.route("/", createEmailRouter({ db, gmailAdapter: deps.gmailAdapter }));
 
   if (deps.gmailAdapter) {
     const syncService = new SyncService(db, deps.gmailAdapter);
