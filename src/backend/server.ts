@@ -17,7 +17,9 @@ export interface ServerDeps {
   oauth?: OAuthClient | null;
   tokenStore?: TokenStore;
   gmailAdapter?: GmailAdapter;
+  llmProvider?: any;
   embeddingProvider?: EmbeddingProvider;
+  summaryWorker?: any;
 }
 
 export function createApp(deps: ServerDeps): Hono {
@@ -42,7 +44,7 @@ export function createApp(deps: ServerDeps): Hono {
     const syncService = new SyncService(db, deps.gmailAdapter);
     app.route(
       "/",
-      createSyncRouter(syncService, deps.gmailAdapter, db)
+      createSyncRouter(syncService, deps.gmailAdapter, db, deps.summaryWorker)
     );
   }
 

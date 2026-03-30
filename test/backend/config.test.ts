@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { loadConfig } from "@backend/config";
+import { createLlmProvider } from "@backend/llm/create-provider";
+import { AnthropicAdapter } from "@backend/llm/anthropic-adapter";
+import { OpenAIAdapter } from "@backend/llm/openai-adapter";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -111,5 +114,66 @@ batch_size = -1
     expect(() => loadConfig(join(FIXTURE_DIR, "config.toml"))).toThrow(
       /batch_size/
     );
+  });
+});
+
+describe("LLM provider creation from config", () => {
+  it("should create AnthropicAdapter when provider is anthropic", () => {
+    writeConfig(`
+[server]
+port = 3000
+
+[auth]
+credentials_path = "/c.json"
+token_path = "/t.json"
+
+[llm]
+provider = "anthropic"
+api_key = "test-key"
+model = "test-model"
+base_url = "http://localhost:5506"
+`);
+    const config = loadConfig(join(FIXTURE_DIR, "config.toml"));
+    const provider = createLlmProvider(config.llm);
+    expect(provider).toBeInstanceOf(AnthropicAdapter);
+  });
+
+  it("should create OpenAIAdapter when provider is openai", () => {
+    writeConfig(`
+[server]
+port = 3000
+
+[auth]
+credentials_path = "/c.json"
+token_path = "/t.json"
+
+[llm]
+provider = "openai"
+api_key = "test-key"
+model = "test-model"
+base_url = "http://localhost:5506"
+`);
+    const config = loadConfig(join(FIXTURE_DIR, "config.toml"));
+    const provider = createLlmProvider(config.llm);
+    expect(provider).toBeInstanceOf(OpenAIAdapter);
+  });
+
+  it("should throw for unknown provider", () => {
+    writeConfig(`
+[server]
+port = 3000
+
+[auth]
+credentials_path = "/c.json"
+token_path = "/t.json"
+
+[llm]
+provider = "unknown"
+api_key = "test-key"
+model = "test-model"
+base_url = "http://localhost:5506"
+`);
+    const config = loadConfig(join(FIXTURE_DIR, "config.toml"));
+    expect(() => createLlmProvider(config.llm)).toThrow(/provider/);
   });
 });

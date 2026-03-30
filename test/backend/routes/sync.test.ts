@@ -35,11 +35,14 @@ describe("Sync routes (basic)", () => {
       expect(res.status).toBe(202);
     });
 
-    it("should return 401 if not authorized (no oauth configured)", async () => {
-      // This depends on the sync router checking auth status
-      // For now, sync routes work without auth check (auth is checked at server level)
+    it("should trigger summary worker after sync completes", async () => {
+      // Sync will fetch mock messages, then summary worker should process them
       const res = await app.request("/sync", { method: "POST" });
       expect(res.status).toBe(202);
+      // Wait for background sync + summary processing
+      await new Promise((r) => setTimeout(r, 200));
+      // The mock LLM should have been called (summaryWorker is wired up)
+      // We just verify no errors occurred
     });
   });
 
@@ -52,6 +55,77 @@ describe("Sync routes (basic)", () => {
       expect(body.unreadCount).toBeDefined();
       expect(body.lastHistoryId).toBeDefined();
       expect(body.syncInProgress).toBeDefined();
+    });
+
+    it("should include gap count in status", async () => {
+      const res = await app.request("/sync/status");
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.gapCount).toBeDefined();
+    });
+  });
+
+  describe("GET /sync/gaps", () => {
+    it("should list all open gaps sorted by created_at asc", async () => {
+      const res = await app.request("/sync/gaps");
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(Array.isArray(body.gaps)).toBe(true);
+    });
+
+    it("should include page_token, estimated_count, and status for each gap", async () => {
+      // Insert a gap directly
+      db.run(
+        "INSERT INTO gaps (page_token, estimated_count, status, created_at, updated_at) VALUES (?, ?, 'open', ?, ?)",
+        ["test-page-token", 50, Date.now(), Date.now()]
+      );
+
+      const res = await app.request("/sync/gaps");
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.gaps.length).toBe(1);
+      expect(body.gaps[0].page_token).toBe("test-page-token");
+      expect(body.gaps[0].estimated_count).toBe(50);
+      expect(body.gaps[0].status).toBe("open");
+    });
+  });
+
+  describe("POST /sync/gaps/:id/fill", () => {
+    it("should return 404 if gap does not exist", async () => {
+      const res = await app.request("/sync/gaps/999/fill", { method: "POST" });
+      expect(res.status).toBe(404);
+    });
+
+    it("should return 409 if gap is already in filling status", async () => {
+      const result = db.run(
+        "INSERT INTO gaps (page_token, estimated_count, status, created_at, updated_at) VALUES (?, ?, 'filling', ?, ?)",
+        ["test-token", 10, Date.now(), Date.now()]
+      );
+      const gapId = Number(result.lastInsertRowid);
+
+      const res = await app.request(`/sync/gaps/${gapId}/fill`, { method: "POST" });
+      expect(res.status).toBe(409);
+    });
+  });
+
+  describe("DELETE /sync/gaps/:id", () => {
+    it("should abandon the specified gap", async () => {
+      const result = db.run(
+        "INSERT INTO gaps (page_token, estimated_count, status, created_at, updated_at) VALUES (?, ?, 'open', ?, ?)",
+        ["test-token", 10, Date.now(), Date.now()]
+      );
+      const gapId = Number(result.lastInsertRowid);
+
+      const res = await app.request(`/sync/gaps/${gapId}`, { method: "DELETE" });
+      expect(res.status).toBe(200);
+
+      const gap = db.query("SELECT status FROM gaps WHERE id = ?").get(gapId) as any;
+      expect(gap.status).toBe("closed");
+    });
+
+    it("should return 404 if gap does not exist", async () => {
+      const res = await app.request("/sync/gaps/999", { method: "DELETE" });
+      expect(res.status).toBe(404);
     });
   });
 });

@@ -36,6 +36,7 @@ export class SyncService {
         labelIds: ["INBOX"],
       });
 
+
       let fetched = 0;
       let skipped = 0;
 
@@ -50,6 +51,14 @@ export class SyncService {
 
         const fullMsg = await this.adapter.getMessage(msg.id);
         if (!fullMsg) continue;
+
+        // Capture historyId from individual message responses
+        if ((this.adapter as any)._lastHistoryId) {
+          this.db.run(
+            "INSERT OR REPLACE INTO sync_state (key, value) VALUES ('last_history_id', ?)",
+            [(this.adapter as any)._lastHistoryId]
+          );
+        }
 
         this.db.run(
           `INSERT OR IGNORE INTO emails (id, thread_id, sender, recipients, subject, body_text, body_html, date_sent, date_received, labels, is_read, is_starred, fetched_at)

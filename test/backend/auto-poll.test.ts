@@ -59,4 +59,17 @@ describe("Auto-polling", () => {
     poller.stop();
     expect(syncCount).toBe(0);
   });
+
+  it("should report running status", () => {
+    const poller = new AutoPoller({
+      intervalMs: 100,
+      onSync: async () => {},
+      isAuthorized: () => true,
+    });
+    expect(poller.isRunning()).toBe(false);
+    poller.start();
+    expect(poller.isRunning()).toBe(true);
+    poller.stop();
+    expect(poller.isRunning()).toBe(false);
+  });
 });

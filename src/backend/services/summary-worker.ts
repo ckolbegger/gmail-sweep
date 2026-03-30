@@ -87,6 +87,7 @@ export class SummaryWorker {
   start(intervalMs: number = 30000): void {
     if (this.running) return;
     this.running = true;
+    console.log(`SummaryWorker starting with interval ${intervalMs}ms, queue depth: ${this.getQueueDepth()}`);
     this.intervalTimer = setInterval(() => {
       this.processPending();
     }, intervalMs);

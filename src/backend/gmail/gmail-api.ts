@@ -40,6 +40,7 @@ function extractBody(payload: any): { text: string; html: string } {
 
 export class GmailApiClient implements GmailAdapter {
   private getTokens: () => Promise<{ access_token: string } | null>;
+  public _lastHistoryId?: string;
 
   constructor(getTokens: () => Promise<{ access_token: string } | null>) {
     this.getTokens = getTokens;
@@ -106,7 +107,7 @@ export class GmailApiClient implements GmailAdapter {
         threadId: m.threadId,
       })),
       nextPageToken: data.nextPageToken,
-      historyId: String(data.historyId ?? ""),
+      historyId: data.historyId ? String(data.historyId) : this._lastHistoryId ?? "",
     };
   }
 
@@ -115,6 +116,10 @@ export class GmailApiClient implements GmailAdapter {
       `/gmail/v1/users/me/messages/${id}?format=full`
     );
     const data = (await res.json()) as any;
+    const historyId = data.historyId ? String(data.historyId) : undefined;
+    if (historyId) {
+      this._lastHistoryId = historyId;
+    }
 
     const headers = data.payload?.headers ?? [];
     const { text, html } = extractBody(data.payload);
