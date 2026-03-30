@@ -113,6 +113,7 @@ export class ApiClient {
     unreadCount: number;
     lastHistoryId: string | null;
     syncInProgress: boolean;
+    gapCount: number;
   }> {
     const res = await fetch(`${this.baseUrl}/sync/status`);
     if (!res.ok) throw new Error(`Sync status failed: ${res.status}`);

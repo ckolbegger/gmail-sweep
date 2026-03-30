@@ -91,6 +91,67 @@ export function createTuiApp(apiClient: ApiClient) {
     }
   });
 
+  // 'e' to archive selected email
+  screen.key(["e"], async () => {
+    if (searchBar.isActive()) return;
+    const selected = emailList.getSelected();
+    if (!selected) return;
+    try {
+      await apiClient.archiveEmail(selected.id);
+      emailList.removeSelected();
+      loadSelectedEmail();
+      await updateStatus();
+    } catch {
+      statusBar.render({ error: "Archive failed" } as StatusBarState);
+    }
+  });
+
+  // '#' to delete selected email
+  screen.key(["#"], async () => {
+    if (searchBar.isActive()) return;
+    const selected = emailList.getSelected();
+    if (!selected) return;
+    try {
+      await apiClient.deleteEmail(selected.id);
+      emailList.removeSelected();
+      loadSelectedEmail();
+      await updateStatus();
+    } catch {
+      statusBar.render({ error: "Delete failed" } as StatusBarState);
+    }
+  });
+
+  // 'r' to toggle read/unread
+  screen.key(["r"], async () => {
+    if (searchBar.isActive()) return;
+    const selected = emailList.getSelected();
+    if (!selected) return;
+    try {
+      if (selected.is_read) {
+        await apiClient.markUnread(selected.id);
+        emailList.updateEmail(selected.id, { is_read: false });
+      } else {
+        await apiClient.markRead(selected.id);
+        emailList.updateEmail(selected.id, { is_read: true });
+      }
+      await updateStatus();
+    } catch {
+      statusBar.render({ error: "Toggle read failed" } as StatusBarState);
+    }
+  });
+
+  // 's' to trigger sync
+  screen.key(["s"], async () => {
+    if (searchBar.isActive()) return;
+    try {
+      statusBar.render({ syncStatus: "syncing" } as StatusBarState);
+      await apiClient.triggerSync();
+      setTimeout(() => loadEmails(), 2000);
+    } catch {
+      statusBar.render({ error: "Sync failed" } as StatusBarState);
+    }
+  });
+
   async function performSearch(query: string) {
     try {
       statusBar.render({ mode: "search" } as StatusBarState);
