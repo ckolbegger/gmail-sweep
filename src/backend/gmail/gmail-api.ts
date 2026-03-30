@@ -134,7 +134,7 @@ export class GmailApiClient implements GmailAdapter {
       bodyText: text,
       bodyHtml: html,
       dateSent: new Date(findHeader(headers, "Date")).getTime(),
-      dateReceived: data.internalDate ? Number(data.internalDate) : Date.now(),
+      dateReceived: parseDateReceived(data),
       labels: labelIds.map((id) => ({ id, name: id })),
       isRead: !labelIds.includes("UNREAD"),
       isStarred: labelIds.includes("STARRED"),
@@ -205,4 +205,17 @@ export class GmailApiClient implements GmailAdapter {
       historyId: String(data.historyId ?? ""),
     };
   }
+}
+
+function parseDateReceived(data: any): number {
+  const raw = data.internalDate;
+  const parsed = raw != null ? Number(raw) : NaN;
+  if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  // Fall back to Date header
+  const dateHeader = findHeader(data.payload?.headers ?? [], "Date");
+  if (dateHeader) {
+    const ms = new Date(dateHeader).getTime();
+    if (Number.isFinite(ms)) return ms;
+  }
+  return Date.now();
 }

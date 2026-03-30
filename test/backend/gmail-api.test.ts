@@ -150,6 +150,89 @@ describe("Gmail API client", () => {
       expect(msg!.subject).toBe("Hello");
     });
 
+    it("should parse numeric internalDate for dateReceived", async () => {
+      const client = createClient();
+      const expectedTimestamp = 1743290698000;
+      globalThis.fetch = mock(async () => {
+        return new Response(
+          JSON.stringify({
+            id: "msg1",
+            threadId: "t1",
+            internalDate: expectedTimestamp,
+            payload: {
+              headers: [
+                { name: "From", value: "a@b.com" },
+                { name: "To", value: "c@d.com" },
+                { name: "Subject", value: "Test" },
+                { name: "Date", value: "Mon, 01 Jan 2024 00:00:00 +0000" },
+              ],
+              mimeType: "text/plain",
+              body: { data: btoa("Hello") },
+            },
+            labelIds: ["INBOX"],
+          })
+        );
+      }) as any;
+
+      const msg = await client.getMessage("msg1");
+      expect(msg!.dateReceived).toBe(expectedTimestamp);
+    });
+
+    it("should fall back to Date header when internalDate is missing", async () => {
+      const client = createClient();
+      globalThis.fetch = mock(async () => {
+        return new Response(
+          JSON.stringify({
+            id: "msg1",
+            threadId: "t1",
+            payload: {
+              headers: [
+                { name: "From", value: "a@b.com" },
+                { name: "To", value: "c@d.com" },
+                { name: "Subject", value: "Test" },
+                { name: "Date", value: "Sat, 29 Mar 2025 12:00:00 +0000" },
+              ],
+              mimeType: "text/plain",
+              body: { data: btoa("Hello") },
+            },
+            labelIds: ["INBOX"],
+          })
+        );
+      }) as any;
+
+      const msg = await client.getMessage("msg1");
+      expect(msg!.dateReceived).toBeGreaterThan(0);
+      expect(msg!.dateReceived).not.toBe(-2147483648);
+    });
+
+    it("should fall back to Date header when internalDate is not a valid number", async () => {
+      const client = createClient();
+      globalThis.fetch = mock(async () => {
+        return new Response(
+          JSON.stringify({
+            id: "msg1",
+            threadId: "t1",
+            internalDate: "not-a-number",
+            payload: {
+              headers: [
+                { name: "From", value: "a@b.com" },
+                { name: "To", value: "c@d.com" },
+                { name: "Subject", value: "Test" },
+                { name: "Date", value: "Sat, 29 Mar 2025 12:00:00 +0000" },
+              ],
+              mimeType: "text/plain",
+              body: { data: btoa("Hello") },
+            },
+            labelIds: ["INBOX"],
+          })
+        );
+      }) as any;
+
+      const msg = await client.getMessage("msg1");
+      expect(Number.isNaN(msg!.dateReceived)).toBe(false);
+      expect(msg!.dateReceived).toBeGreaterThan(0);
+    });
+
     it("should extract text/plain and text/html body parts", async () => {
       const client = createClient();
       globalThis.fetch = mock(async () => {
