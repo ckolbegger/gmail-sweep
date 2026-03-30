@@ -26,6 +26,7 @@ export interface EmailDetail {
   labels: { id: string; name: string }[];
   is_read: boolean;
   is_starred: boolean;
+  summary: string | null;
 }
 
 export interface EmailListResponse {

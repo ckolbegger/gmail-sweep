@@ -53,7 +53,7 @@ export function createDetailPanel(screen: blessed.Widgets.Screen) {
     panel.setLabel(` Email ${modeLabel} `);
 
     const header = `{bold}${e.subject}{/bold}\n{gray-fg}From:{/gray-fg} ${e.sender}\n{gray-fg}Date:{/gray-fg} ${new Date(e.date_received).toLocaleString()}\n${"─".repeat(40)}`;
-    panel.setContent(`${header}\n\n${e.body_text || "(no text content)"}`);
+    panel.setContent(`${header}\n\n${getEmailContent(e, viewMode)}`);
     screen.render();
   }
 
@@ -96,4 +96,12 @@ export function createDetailPanel(screen: blessed.Widgets.Screen) {
     setHalfWidth,
     isVisible,
   };
+}
+
+export function getEmailContent(
+  email: { body_text: string; summary: string | null },
+  viewMode: "summary" | "full"
+): string {
+  if (viewMode === "summary" && email.summary) return email.summary;
+  return email.body_text || "(no text content)";
 }
