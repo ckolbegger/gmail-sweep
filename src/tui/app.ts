@@ -205,10 +205,10 @@ export function createTuiApp(apiClient: ApiClient) {
         authStatus: authStatus.authorized ? "authorized" : "unauthorized",
         unreadCount: syncStatus.unreadCount,
         totalEmails: syncStatus.totalEmails,
+        gapCount: syncStatus.gapCount,
         mode: currentMode,
       });
-    } catch {
-      statusBar.render({ error: "Connection error" });
+    } catch {      statusBar.render({ error: "Connection error" });
     }
   }
 
