@@ -74,12 +74,26 @@ describe("SearchService", () => {
       expect(results[1].id).toBe("e1");
     });
 
-    it("falls back to SQL when no embedding provider is available", async () => {
+    it("filters by free text using LIKE in SQL-only mode", async () => {
       const service = new SearchService(db);
       const results = await service.search("meeting");
-      // Should do a SQL search without vector ranking
-      // The free text is not used for filtering in SQL-only mode
-      expect(results.length).toBe(3);
+      expect(results.length).toBe(2);
+      const ids = results.map((r) => r.id);
+      expect(ids).toContain("e1");
+      expect(ids).toContain("e3");
+    });
+
+    it("returns empty results when free text matches nothing", async () => {
+      const service = new SearchService(db);
+      const results = await service.search("nonexistent-query-xyz");
+      expect(results.length).toBe(0);
+    });
+
+    it("combines free text LIKE with operator filters", async () => {
+      const service = new SearchService(db);
+      const results = await service.search("meeting from:alice@example.com");
+      expect(results.length).toBe(1);
+      expect(results[0].id).toBe("e1");
     });
 
     it("respects the limit parameter", async () => {

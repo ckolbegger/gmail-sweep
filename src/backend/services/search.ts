@@ -30,7 +30,7 @@ export class SearchService {
 
     // If no free text, or no embedding provider -> pure SQL search
     if (!parsed.freeText.trim() || !this.embeddingProvider) {
-      return this.sqlSearch(where, params, limit);
+      return this.sqlSearch(parsed.freeText, where, params, limit);
     }
 
     // Vector search with filters
@@ -38,16 +38,32 @@ export class SearchService {
   }
 
   private sqlSearch(
+    freeText: string,
     where: string,
     params: any[],
     limit: number
   ): SearchResult[] {
+    const clauses: string[] = [];
+    const allParams: any[] = [];
+
+    if (where) {
+      clauses.push(where);
+      allParams.push(...params);
+    }
+
+    if (freeText.trim()) {
+      clauses.push("(subject LIKE ? OR sender LIKE ? OR body_text LIKE ?)");
+      const pattern = `%${freeText}%`;
+      allParams.push(pattern, pattern, pattern);
+    }
+
+    const whereClause = clauses.length > 0 ? "WHERE " + clauses.join(" AND ") : "";
     const sql = `SELECT id, thread_id, sender, recipients, subject, date_received, is_read, is_starred, summary
-       FROM emails ${where ? "WHERE " + where : ""}
+       FROM emails ${whereClause}
        ORDER BY date_received DESC
        LIMIT ?`;
 
-    const rows = this.db.query(sql).all(...params, limit) as any[];
+    const rows = this.db.query(sql).all(...allParams, limit) as any[];
 
     return rows.map((r: any) => ({
       id: r.id,
