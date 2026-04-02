@@ -31,7 +31,7 @@ export function createDetailPanel(screen: blessed.Widgets.Screen) {
 
   function showEmail(email: EmailDetail | null) {
     currentEmail = email;
-    viewMode = "full";
+    viewMode = defaultViewMode(email);
     render();
   }
 
@@ -99,9 +99,30 @@ export function createDetailPanel(screen: blessed.Widgets.Screen) {
 }
 
 export function getEmailContent(
-  email: { body_text: string; summary: string | null },
+  email: {
+    body_text: string;
+    summary: string | null;
+    action_items: string[] | null;
+    key_points: string[] | null;
+  },
   viewMode: "summary" | "full"
 ): string {
-  if (viewMode === "summary" && email.summary) return email.summary;
+  if (viewMode === "summary" && email.summary) {
+    let content = email.summary;
+    if (email.action_items && email.action_items.length > 0) {
+      content += "\n\n{bold}Action Items:{/bold}\n" + email.action_items.map((a) => `• ${a}`).join("\n");
+    }
+    if (email.key_points && email.key_points.length > 0) {
+      content += "\n\n{bold}Key Points:{/bold}\n" + email.key_points.map((k) => `• ${k}`).join("\n");
+    }
+    return content;
+  }
   return email.body_text || "(no text content)";
+}
+
+export function defaultViewMode(
+  email: { summary: string | null } | null
+): "summary" | "full" {
+  if (email?.summary) return "summary";
+  return "full";
 }

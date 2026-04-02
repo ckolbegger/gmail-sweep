@@ -27,6 +27,8 @@ export interface EmailDetail {
   is_read: boolean;
   is_starred: boolean;
   summary: string | null;
+  action_items: string[] | null;
+  key_points: string[] | null;
 }
 
 export interface EmailListResponse {

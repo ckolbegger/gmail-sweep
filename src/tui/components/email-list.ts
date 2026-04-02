@@ -9,9 +9,9 @@ export function createEmailList(screen: blessed.Widgets.Screen) {
     left: 0,
     width: "50%",
     bottom: 1,
-    keys: true,
+    keys: false,
     mouse: true,
-    vi: true,
+    vi: false,
     style: {
       bg: THEME.bg,
       fg: THEME.fg,
@@ -59,7 +59,7 @@ export function createEmailList(screen: blessed.Widgets.Screen) {
   function selectDown() {
     if (selectedIndex < emails.length - 1) {
       selectedIndex++;
-      list.down(1);
+      list.select(selectedIndex);
       screen.render();
     }
   }
@@ -67,7 +67,7 @@ export function createEmailList(screen: blessed.Widgets.Screen) {
   function selectUp() {
     if (selectedIndex > 0) {
       selectedIndex--;
-      list.up(1);
+      list.select(selectedIndex);
       screen.render();
     }
   }
