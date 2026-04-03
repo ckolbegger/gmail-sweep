@@ -1,6 +1,7 @@
 import blessed from "blessed";
 import { THEME } from "../theme";
 import type { EmailSummary } from "../api";
+import { truncateToWidth, padEndWidth, stripEmoji } from "../visual-width";
 
 export function createEmailList(screen: blessed.Widgets.Screen) {
   const list = blessed.list({
@@ -40,13 +41,22 @@ export function createEmailList(screen: blessed.Widgets.Screen) {
   }
 
   function render() {
+    // Dynamic column widths based on actual pane width
+    const paneWidth = list.width as number;
+    const overhead = 5; // "● ★ " (4) + separator before time (1)
+    const timeWidth = 8; // "12:34 PM" (worst case)
+    const scrollbarWidth = 1;
+    const available = Math.max(20, paneWidth - overhead - timeWidth - scrollbarWidth);
+    const senderWidth = Math.min(20, Math.floor(available * 0.35));
+    const subjectWidth = available - senderWidth - 1;
+
     const items = emails.map((email) => {
       const unread = !email.is_read ? "{bold}{cyan-fg}●{/bold}{/cyan-fg}" : " ";
       const star = email.is_starred ? "{yellow-fg}★{/yellow-fg}" : " ";
-      const sender = (email.sender || "").split("<")[0].trim().slice(0, 20);
-      const subject = (email.subject || "(no subject)").slice(0, 35);
+      const sender = truncateToWidth(stripEmoji((email.sender || "").split("<")[0].trim()), senderWidth);
+      const subject = truncateToWidth(stripEmoji(email.subject || "(no subject)"), subjectWidth);
       const time = formatTime(email.date_received);
-      return `${unread} ${star} ${sender.padEnd(20)} ${subject.padEnd(35)} ${time}`;
+      return `${unread} ${star} ${padEndWidth(sender, senderWidth)} ${padEndWidth(subject, subjectWidth)} ${time}`;
     });
 
     list.setItems(items);

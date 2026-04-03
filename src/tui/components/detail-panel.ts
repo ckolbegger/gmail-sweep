@@ -1,6 +1,7 @@
 import blessed from "blessed";
 import { THEME } from "../theme";
 import type { EmailDetail } from "../api";
+import { wrapText, stripEmoji } from "../visual-width";
 
 export function createDetailPanel(screen: blessed.Widgets.Screen) {
   let showingFullWidth = false;
@@ -52,8 +53,17 @@ export function createDetailPanel(screen: blessed.Widgets.Screen) {
     const modeLabel = viewMode === "summary" ? "[summary]" : "[full]";
     panel.setLabel(` Email ${modeLabel} `);
 
-    const header = `{bold}${e.subject}{/bold}\n{gray-fg}From:{/gray-fg} ${e.sender}\n{gray-fg}Date:{/gray-fg} ${new Date(e.date_received).toLocaleString()}\n${"─".repeat(40)}`;
-    panel.setContent(`${header}\n\n${getEmailContent(e, viewMode)}`);
+    // Content width = panel width - 2 (borders)
+    const contentWidth = Math.max(10, (panel.width as number) - 2);
+    const separator = "─".repeat(contentWidth);
+    const subject = stripEmoji(e.subject);
+    const sender = stripEmoji(e.sender);
+    const header = `{bold}${subject}{/bold}\n{gray-fg}From:{/gray-fg} ${sender}\n{gray-fg}Date:{/gray-fg} ${new Date(e.date_received).toLocaleString()}\n${separator}`;
+
+    // Pre-wrap full content to prevent overflow past borders
+    const body = stripEmoji(getEmailContent(e, viewMode));
+    const fullContent = `${header}\n\n${body}`;
+    panel.setContent(wrapText(fullContent, contentWidth));
     screen.render();
   }
 

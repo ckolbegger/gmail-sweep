@@ -1,9 +1,17 @@
 import blessed from "blessed";
 import { THEME } from "../theme";
 
-export interface SearchBarResult {
-  query: string;
-}
+export const SEARCH_BAR_OPTIONS = {
+  top: 0,
+  left: 0,
+  width: "100%",
+  height: 1,
+  style: {
+    bg: THEME.accent,
+    fg: THEME.bg,
+  },
+  inputOnFocus: false,
+} as const;
 
 export function createSearchBar(screen: blessed.Widgets.Screen) {
   let active = false;
@@ -12,30 +20,11 @@ export function createSearchBar(screen: blessed.Widgets.Screen) {
 
   const input = blessed.textbox({
     parent: screen,
-    top: 0,
-    left: 0,
-    width: "100%",
-    height: 1,
-    style: {
-      bg: THEME.accent,
-      fg: THEME.bg,
-    },
-    inputOnFocus: true,
+    ...SEARCH_BAR_OPTIONS,
   });
 
   // Start hidden
   input.hide();
-
-  input.key(["enter"], () => {
-    const query = input.getValue().trim();
-    deactivate();
-    onSubmit?.(query);
-  });
-
-  input.key(["escape"], () => {
-    deactivate();
-    onCancel?.();
-  });
 
   function activate(callbacks: {
     onSubmit: (query: string) => void;
@@ -47,7 +36,17 @@ export function createSearchBar(screen: blessed.Widgets.Screen) {
     input.setValue("");
     input.show();
     screen.render();
-    input.readInput();
+    input.readInput((err, value) => {
+      // Defer to avoid mutating blessed state during key event processing
+      setTimeout(() => {
+        deactivate();
+        if (err || value == null) {
+          onCancel?.();
+        } else {
+          onSubmit?.(value.trim());
+        }
+      }, 0);
+    });
   }
 
   function deactivate() {
