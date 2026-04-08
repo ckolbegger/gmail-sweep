@@ -90,6 +90,18 @@ export function createEmailRouter(deps: { db: Database; gmailAdapter?: GmailAdap
     return { error: null, email };
   };
 
+  router.get("/emails/:id/raw", async (c) => {
+    const adapterError = requireAdapter(c);
+    if (adapterError) return adapterError;
+
+    const id = c.req.param("id");
+    const message = await gmailAdapter!.getMessage(id);
+    if (!message) {
+      return c.json({ error: "Message not found in Gmail" }, 404);
+    }
+    return c.json(message);
+  });
+
   router.post("/emails/:id/archive", async (c) => {
     const adapterError = requireAdapter(c);
     if (adapterError) return adapterError;
