@@ -1,11 +1,13 @@
 import blessed from "blessed";
 import { THEME } from "../theme";
 import type { EmailDetail } from "../api";
+
+export type ViewMode = "summary" | "full";
 import { wrapText, stripEmoji } from "../visual-width";
 
 export function createDetailPanel(screen: blessed.Widgets.Screen) {
   let showingFullWidth = false;
-  let viewMode: "summary" | "full" = "full";
+  let viewMode: ViewMode = "full";
 
   const panel = blessed.box({
     parent: screen,
@@ -115,7 +117,7 @@ export function getEmailContent(
     action_items: string[] | null;
     key_points: string[] | null;
   },
-  viewMode: "summary" | "full"
+  viewMode: ViewMode
 ): string {
   if (viewMode === "summary" && email.summary) {
     let content = email.summary;
@@ -132,7 +134,7 @@ export function getEmailContent(
 
 export function defaultViewMode(
   email: { summary: string | null } | null
-): "summary" | "full" {
+): ViewMode {
   if (email?.summary) return "summary";
   return "full";
 }

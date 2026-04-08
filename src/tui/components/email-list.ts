@@ -10,7 +10,7 @@ export function createEmailList(screen: blessed.Widgets.Screen) {
     left: 0,
     width: "50%",
     bottom: 1,
-    keys: false,
+    keys: false, // must be false — blessed's built-in key handler double-fires with our selectDown/Up
     mouse: true,
     vi: false,
     style: {
