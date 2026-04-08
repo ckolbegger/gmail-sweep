@@ -19,30 +19,36 @@ export class OpenAIAdapter implements LLMProvider {
   }): Promise<SummaryResult> {
     const { system, user } = buildSummaryPrompt(email);
 
+    const requestBody = {
+      model: this.model,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+    };
+
+    console.log("[LLM] OpenAI request:", JSON.stringify(requestBody, null, 2));
+
     const res = await fetch(`${this.baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${this.apiKey}`,
       },
-      body: JSON.stringify({
-        model: this.model,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!res.ok) {
-      throw new Error(
-        `OpenAI API error: ${res.status} ${await res.text()}`
-      );
+      const errorText = await res.text();
+      console.error("[LLM] OpenAI error response:", res.status, errorText);
+      throw new Error(`OpenAI API error: ${res.status} ${errorText}`);
     }
 
     const data = (await res.json()) as {
       choices: { message: { content: string } }[];
     };
+
+    console.log("[LLM] OpenAI response:", JSON.stringify(data, null, 2));
 
     let parsed: {
       summary: string;
