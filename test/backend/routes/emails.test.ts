@@ -148,4 +148,31 @@ describe("Email routes", () => {
       expect(m2.ai_status).toBe("pending");
     });
   });
+
+  describe("GET /emails (removed_state filter)", () => {
+    it("should exclude emails with removed_state = 'archived'", async () => {
+      db.run(`UPDATE emails SET removed_state = 'archived' WHERE id = 'm1'`);
+      const res = await app.request("/emails");
+      const body = await res.json();
+      expect(body.emails).toHaveLength(2);
+      expect(body.emails.find((e: any) => e.id === "m1")).toBeUndefined();
+    });
+
+    it("should exclude emails with removed_state = 'deleted'", async () => {
+      db.run(`UPDATE emails SET removed_state = 'deleted' WHERE id = 'm2'`);
+      const res = await app.request("/emails");
+      const body = await res.json();
+      expect(body.emails).toHaveLength(2);
+      expect(body.emails.find((e: any) => e.id === "m2")).toBeUndefined();
+    });
+
+    it("should exclude all removed emails and adjust total", async () => {
+      db.run(`UPDATE emails SET removed_state = 'archived' WHERE id = 'm1'`);
+      db.run(`UPDATE emails SET removed_state = 'deleted' WHERE id = 'm3'`);
+      const res = await app.request("/emails");
+      const body = await res.json();
+      expect(body.emails).toHaveLength(1);
+      expect(body.total).toBe(1);
+    });
+  });
 });

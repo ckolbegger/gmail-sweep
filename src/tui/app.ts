@@ -92,33 +92,35 @@ export function createTuiApp(apiClient: ApiClient) {
   });
 
   // 'e' to archive selected email
-  screen.key(["e"], async () => {
+  screen.key(["e"], () => {
     if (searchBar.isActive()) return;
     const selected = emailList.getSelected();
     if (!selected) return;
-    try {
-      await apiClient.archiveEmail(selected.id);
-      emailList.removeSelected();
-      loadSelectedEmail();
-      await updateStatus();
-    } catch {
+
+    // Optimistic: update UI immediately, fire API in background
+    emailList.removeSelected();
+    loadSelectedEmail();
+    updateStatus();
+
+    apiClient.archiveEmail(selected.id).catch(() => {
       statusBar.render({ error: "Archive failed" } as StatusBarState);
-    }
+    });
   });
 
   // '#' to delete selected email
-  screen.key(["#"], async () => {
+  screen.key(["#"], () => {
     if (searchBar.isActive()) return;
     const selected = emailList.getSelected();
     if (!selected) return;
-    try {
-      await apiClient.deleteEmail(selected.id);
-      emailList.removeSelected();
-      loadSelectedEmail();
-      await updateStatus();
-    } catch {
+
+    // Optimistic: update UI immediately, fire API in background
+    emailList.removeSelected();
+    loadSelectedEmail();
+    updateStatus();
+
+    apiClient.deleteEmail(selected.id).catch(() => {
       statusBar.render({ error: "Delete failed" } as StatusBarState);
-    }
+    });
   });
 
   // 'r' to toggle read/unread

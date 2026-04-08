@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS emails (
   summary_generated_at INTEGER,
   embedding BLOB,
   embedding_model TEXT,
-  embedding_generated_at INTEGER
+  embedding_generated_at INTEGER,
+  removed_state TEXT DEFAULT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_emails_date_received ON emails(date_received);

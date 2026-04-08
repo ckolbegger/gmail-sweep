@@ -15,6 +15,12 @@ export class MockGmailAdapter implements GmailAdapter {
   private deletedIds: string[] = [];
   private modifyLabelsCalls: { id: string; addLabelIds: string[]; removeLabelIds: string[] }[] = [];
   private historyIdCounter = 1000;
+  private failNext = false;
+
+  /** Set to true to make the next archive/delete call throw. */
+  setFailNext(fail: boolean): void {
+    this.failNext = fail;
+  }
 
   addMessage(msg: GmailMessage): void {
     this.messages.set(msg.id, msg);
@@ -58,6 +64,10 @@ export class MockGmailAdapter implements GmailAdapter {
   }
 
   async archive(id: string): Promise<void> {
+    if (this.failNext) {
+      this.failNext = false;
+      throw new Error("Mock archive failure");
+    }
     this.archivedIds.push(id);
     const msg = this.messages.get(id);
     if (msg) {
@@ -66,6 +76,10 @@ export class MockGmailAdapter implements GmailAdapter {
   }
 
   async delete(id: string): Promise<void> {
+    if (this.failNext) {
+      this.failNext = false;
+      throw new Error("Mock delete failure");
+    }
     this.deletedIds.push(id);
     const msg = this.messages.get(id);
     if (msg) {

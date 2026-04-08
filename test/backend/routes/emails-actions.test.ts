@@ -87,21 +87,23 @@ describe("Email action routes", () => {
       cleanup();
     });
 
-    it("should return 200 on success", async () => {
+    it("should return 200 immediately (optimistic)", async () => {
       const res = await app.request("/emails/m1/archive", { method: "POST" });
       expect(res.status).toBe(200);
     });
 
-    it("should call gmailAdapter.archive with the email id", async () => {
+    it("should set removed_state = 'archived' in local DB", async () => {
       await app.request("/emails/m1/archive", { method: "POST" });
-      expect(gmailAdapter.archive).toHaveBeenCalledTimes(1);
-      expect(gmailAdapter.archive).toHaveBeenCalledWith("m1");
+      const row = db.query("SELECT removed_state FROM emails WHERE id = ?").get("m1") as any;
+      expect(row.removed_state).toBe("archived");
     });
 
-    it("should remove email from local DB after Gmail confirms success", async () => {
+    it("should call gmailAdapter.archive with the email id", async () => {
       await app.request("/emails/m1/archive", { method: "POST" });
-      const row = db.query("SELECT * FROM emails WHERE id = ?").get("m1");
-      expect(row).toBeNull();
+      // Allow fire-and-forget to complete
+      await new Promise((r) => setTimeout(r, 10));
+      expect(gmailAdapter.archive).toHaveBeenCalledTimes(1);
+      expect(gmailAdapter.archive).toHaveBeenCalledWith("m1");
     });
 
     it("should return 404 if email not found locally", async () => {
@@ -109,12 +111,13 @@ describe("Email action routes", () => {
       expect(res.status).toBe(404);
     });
 
-    it("should not remove from DB if Gmail call fails", async () => {
+    it("should rollback removed_state if Gmail call fails", async () => {
       gmailAdapter.archive = mock(() => Promise.reject(new Error("Gmail API error")));
-      const res = await app.request("/emails/m1/archive", { method: "POST" });
-      expect(res.status).toBe(502);
-      const row = db.query("SELECT * FROM emails WHERE id = ?").get("m1");
-      expect(row).not.toBeNull();
+      await app.request("/emails/m1/archive", { method: "POST" });
+      // Allow fire-and-forget rollback to complete
+      await new Promise((r) => setTimeout(r, 10));
+      const row = db.query("SELECT removed_state FROM emails WHERE id = ?").get("m1") as any;
+      expect(row.removed_state).toBeNull();
     });
 
     it("should keep other emails intact", async () => {
@@ -136,21 +139,23 @@ describe("Email action routes", () => {
       cleanup();
     });
 
-    it("should return 200 on success", async () => {
+    it("should return 200 immediately (optimistic)", async () => {
       const res = await app.request("/emails/m1/delete", { method: "POST" });
       expect(res.status).toBe(200);
     });
 
-    it("should call gmailAdapter.delete with the email id", async () => {
+    it("should set removed_state = 'deleted' in local DB", async () => {
       await app.request("/emails/m1/delete", { method: "POST" });
-      expect(gmailAdapter.delete).toHaveBeenCalledTimes(1);
-      expect(gmailAdapter.delete).toHaveBeenCalledWith("m1");
+      const row = db.query("SELECT removed_state FROM emails WHERE id = ?").get("m1") as any;
+      expect(row.removed_state).toBe("deleted");
     });
 
-    it("should remove email from local DB after Gmail confirms success", async () => {
+    it("should call gmailAdapter.delete with the email id", async () => {
       await app.request("/emails/m1/delete", { method: "POST" });
-      const row = db.query("SELECT * FROM emails WHERE id = ?").get("m1");
-      expect(row).toBeNull();
+      // Allow fire-and-forget to complete
+      await new Promise((r) => setTimeout(r, 10));
+      expect(gmailAdapter.delete).toHaveBeenCalledTimes(1);
+      expect(gmailAdapter.delete).toHaveBeenCalledWith("m1");
     });
 
     it("should return 404 if email not found locally", async () => {
@@ -158,12 +163,13 @@ describe("Email action routes", () => {
       expect(res.status).toBe(404);
     });
 
-    it("should not remove from DB if Gmail call fails", async () => {
+    it("should rollback removed_state if Gmail call fails", async () => {
       gmailAdapter.delete = mock(() => Promise.reject(new Error("Gmail API error")));
-      const res = await app.request("/emails/m1/delete", { method: "POST" });
-      expect(res.status).toBe(502);
-      const row = db.query("SELECT * FROM emails WHERE id = ?").get("m1");
-      expect(row).not.toBeNull();
+      await app.request("/emails/m1/delete", { method: "POST" });
+      // Allow fire-and-forget rollback to complete
+      await new Promise((r) => setTimeout(r, 10));
+      const row = db.query("SELECT removed_state FROM emails WHERE id = ?").get("m1") as any;
+      expect(row.removed_state).toBeNull();
     });
   });
 

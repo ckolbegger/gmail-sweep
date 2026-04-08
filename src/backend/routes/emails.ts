@@ -12,7 +12,7 @@ export function createEmailRouter(deps: { db: Database; gmailAdapter?: GmailAdap
     const unread = c.req.query("unread");
     const label = c.req.query("label");
 
-    let whereClause = "WHERE 1=1";
+    let whereClause = "WHERE removed_state IS NULL";
     const params: any[] = [];
 
     if (unread === "true") {
@@ -98,12 +98,13 @@ export function createEmailRouter(deps: { db: Database; gmailAdapter?: GmailAdap
     if (error) return error;
 
     const id = c.req.param("id");
-    try {
-      await gmailAdapter!.archive(id);
-    } catch {
-      return c.json({ error: "Gmail API error" }, 502);
-    }
-    db.run("DELETE FROM emails WHERE id = ?", [id]);
+    db.run("UPDATE emails SET removed_state = 'archived' WHERE id = ?", [id]);
+
+    // Fire-and-forget Gmail API call; rollback on failure
+    gmailAdapter!.archive(id).catch(() => {
+      db.run("UPDATE emails SET removed_state = NULL WHERE id = ?", [id]);
+    });
+
     return c.json({ success: true });
   });
 
@@ -115,12 +116,13 @@ export function createEmailRouter(deps: { db: Database; gmailAdapter?: GmailAdap
     if (error) return error;
 
     const id = c.req.param("id");
-    try {
-      await gmailAdapter!.delete(id);
-    } catch {
-      return c.json({ error: "Gmail API error" }, 502);
-    }
-    db.run("DELETE FROM emails WHERE id = ?", [id]);
+    db.run("UPDATE emails SET removed_state = 'deleted' WHERE id = ?", [id]);
+
+    // Fire-and-forget Gmail API call; rollback on failure
+    gmailAdapter!.delete(id).catch(() => {
+      db.run("UPDATE emails SET removed_state = NULL WHERE id = ?", [id]);
+    });
+
     return c.json({ success: true });
   });
 
