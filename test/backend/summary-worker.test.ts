@@ -221,5 +221,65 @@ describe("SummaryWorker", () => {
       const row = db.query("SELECT ai_status FROM emails WHERE id = 'm1'").get() as any;
       expect(row.ai_status).toBe("done");
     });
+
+    it("should log errors from processPending during auto-run, not cause unhandled rejection", async () => {
+      seedEmail(db, { id: "m1" });
+      const llm: LLMProvider = {
+        summarize: mock(() => Promise.reject(new Error("LLM down"))),
+      };
+
+      const errorSpy = mock(() => {});
+      const originalError = console.error;
+      console.error = errorSpy;
+
+      const worker = new SummaryWorker(db, llm);
+      worker.start(30);
+
+      // Wait for auto-run to fire
+      await new Promise((r) => setTimeout(r, 80));
+      await worker.shutdown();
+
+      console.error = originalError;
+
+      expect(errorSpy).toHaveBeenCalled();
+      // Find a call that contains the "LLM down" error message
+      const found = errorSpy.mock.calls.some((call: any[]) =>
+        call.some((arg: any) =>
+          typeof arg === "string" && arg.includes("LLM down") ||
+          arg instanceof Error && arg.message === "LLM down"
+        )
+      );
+      expect(found).toBe(true);
+    });
+
+    it("should continue auto-processing after a failure", async () => {
+      seedEmail(db, { id: "m1", ai_status: "pending" });
+
+      let callCount = 0;
+      const llm: LLMProvider = {
+        summarize: mock(async () => {
+          callCount++;
+          if (callCount <= 1) throw new Error("Transient failure");
+          return { summary: "S", actionItems: [], keyPoints: [], model: "test" };
+        }),
+      };
+
+      // concurrency=1 so each email is its own batch
+      const worker = new SummaryWorker(db, llm, 1);
+      worker.start(50);
+
+      // First run: m1 fails (ai_status=failed), not pending anymore
+      // Wait for first cycle to complete, then reset to pending
+      await new Promise((r) => setTimeout(r, 100));
+      db.run("UPDATE emails SET ai_status = 'pending' WHERE id = 'm1'");
+
+      // Wait for second cycle to pick it up
+      await new Promise((r) => setTimeout(r, 150));
+      await worker.shutdown();
+
+      // After retry, m1 should succeed
+      const m1 = db.query("SELECT ai_status FROM emails WHERE id = 'm1'").get() as any;
+      expect(m1.ai_status).toBe("done");
+    });
   });
 });

@@ -23,8 +23,8 @@ export class AutoPoller {
       this.syncing = true;
       try {
         await this.config.onSync();
-      } catch {
-        // Silently handle sync errors in auto-poller
+      } catch (err) {
+        console.error("[AutoPoller] Sync error:", err);
       } finally {
         this.syncing = false;
       }

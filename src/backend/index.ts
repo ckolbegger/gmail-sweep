@@ -17,6 +17,11 @@ function expandPath(p: string): string {
 }
 
 const configPath = process.argv[2] || "config.toml";
+// Safety net for unhandled promise rejections
+process.on("unhandledRejection", (reason) => {
+  console.error("[FATAL] Unhandled rejection:", reason);
+});
+
 const config = loadConfig(configPath);
 const db = initDb("gmail-sweep.db");
 

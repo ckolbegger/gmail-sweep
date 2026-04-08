@@ -35,6 +35,7 @@ export class SummaryWorker {
           processed++;
         } else {
           failed++;
+          console.error("[SummaryWorker] Failed to process email:", result.reason);
         }
       }
     }
@@ -89,10 +90,14 @@ export class SummaryWorker {
     this.running = true;
     console.log(`SummaryWorker starting with interval ${intervalMs}ms, queue depth: ${this.getQueueDepth()}`);
     this.intervalTimer = setInterval(() => {
-      this.processPending();
+      this.processPending().catch((err) => {
+        console.error("[SummaryWorker] Error in auto-run:", err);
+      });
     }, intervalMs);
     // Process immediately on start
-    this.processPending();
+    this.processPending().catch((err) => {
+      console.error("[SummaryWorker] Error in initial run:", err);
+    });
   }
 
   async shutdown(): Promise<void> {
