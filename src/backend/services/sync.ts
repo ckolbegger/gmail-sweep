@@ -1,6 +1,7 @@
 import type Database from "bun:sqlite";
 import type { GmailAdapter } from "@backend/gmail/adapter";
 import { GapManager } from "./gap-manager";
+import { extractBodyText } from "./content";
 
 export interface SyncResult {
   fetched: number;
@@ -69,7 +70,7 @@ export class SyncService {
             fullMsg.sender,
             JSON.stringify(fullMsg.recipients),
             fullMsg.subject,
-            fullMsg.bodyText,
+            extractBodyText(fullMsg.bodyText, fullMsg.bodyHtml),
             fullMsg.bodyHtml,
             fullMsg.dateSent,
             fullMsg.dateReceived,
@@ -157,7 +158,7 @@ export class SyncService {
               fullMsg.sender,
               JSON.stringify(fullMsg.recipients),
               fullMsg.subject,
-              fullMsg.bodyText,
+              extractBodyText(fullMsg.bodyText, fullMsg.bodyHtml),
               fullMsg.bodyHtml,
               fullMsg.dateSent,
               fullMsg.dateReceived,

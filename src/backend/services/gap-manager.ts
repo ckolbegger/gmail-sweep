@@ -1,5 +1,6 @@
 import type Database from "bun:sqlite";
 import type { GmailAdapter } from "@backend/gmail/adapter";
+import { extractBodyText } from "./content";
 
 export interface Gap {
   id: number;
@@ -75,7 +76,7 @@ export class GapManager {
             fullMsg.sender,
             JSON.stringify(fullMsg.recipients),
             fullMsg.subject,
-            fullMsg.bodyText,
+            extractBodyText(fullMsg.bodyText, fullMsg.bodyHtml),
             fullMsg.bodyHtml,
             fullMsg.dateSent,
             fullMsg.dateReceived,
