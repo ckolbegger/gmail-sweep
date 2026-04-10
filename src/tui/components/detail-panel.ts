@@ -4,6 +4,7 @@ import type { EmailDetail } from "../api";
 
 export type ViewMode = "summary" | "full";
 import { wrapText, stripEmoji } from "../visual-width";
+import { htmlToText } from "@backend/services/content";
 
 export function createDetailPanel(screen: blessed.Widgets.Screen) {
   let showingFullWidth = false;
@@ -113,6 +114,7 @@ export function createDetailPanel(screen: blessed.Widgets.Screen) {
 export function getEmailContent(
   email: {
     body_text: string;
+    body_html: string;
     summary: string | null;
     action_items: string[] | null;
     key_points: string[] | null;
@@ -129,7 +131,9 @@ export function getEmailContent(
     }
     return content;
   }
-  return email.body_text || "(no text content)";
+  if (email.body_text) return email.body_text;
+  if (email.body_html) return htmlToText(email.body_html);
+  return "(no text content)";
 }
 
 export function defaultViewMode(
