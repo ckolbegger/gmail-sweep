@@ -135,9 +135,7 @@ describe("SearchService", () => {
     });
   });
 
-  // TODO(Phase E - Feature 6 Task 6.2): Rewrite these tests for vec0-based search.
-  // The embedding column was removed in Phase A.
-  describe.skip("vector search", () => {
+  describe("vector search", () => {
     it("ranks results by cosine similarity when embedding provider is available", async () => {
       // Give all emails the same embedding dimension
       const dim = 3;
@@ -214,8 +212,7 @@ describe("SearchService", () => {
     });
   });
 
-  // TODO(Phase E - Feature 6 Task 6.2): Rewrite for vec0-based search.
-  describe.skip("cosine similarity", () => {
+  describe("cosine similarity", () => {
     it("computes 1.0 for identical vectors", async () => {
       seedEmailWithEmbedding(db, "e1", [1, 2, 3]);
       const provider = mockEmbeddingProvider([1, 2, 3]);

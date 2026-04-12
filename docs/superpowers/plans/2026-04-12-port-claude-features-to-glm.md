@@ -53,11 +53,13 @@ New/modified files in `glm`:
 
 Phases must be executed in order because later phases depend on earlier state:
 
-1. **Phase A — Schema + sqlite-vec foundation.** Introduces the `vec_embeddings` virtual table and extension loading. Everything vector-search-related depends on it.
-2. **Phase B — Shared types package.** Needed by the configurable embed provider, extraction strategies, and the web client.
+**Phase gate rule:** A phase is not complete unless the app boots, all touched tests pass (no `describe.skip` / `it.skip`), and no runtime code paths reference removed schema. If a later phase is required to make current code paths work again, the boundary is wrong.
+
+1. **Phase A — sqlite-vec foundation (additive only).** Loads the `sqlite-vec` extension and creates the `vec_embeddings` virtual table. Does **not** drop existing `embedding` columns or modify any existing consumers. Everything vector-search-related depends on it.
+2. **Phase B — Shared types package.** Needed by the configurable embed provider, extraction strategies, and the web client. Excludes `ParsedQuery` (deferred to Phase D).
 3. **Phase C — Config refactor.** Extends the config shape with `embedding` and `contentExtraction` and adds persistent `POST /config`. Required by Phase D.
-4. **Phase D — Embeddings: pluggable providers + extraction strategies + vec0 writes.** Replaces the current hardcoded "mock" model and broken BLOB decode.
-5. **Phase E — Search: vec0 KNN + LLM query parser.** Depends on Phases A and D.
+4. **Phase D — Atomic semantic-search cutover.** Merges the old Phases D and E into one atomic phase: embed provider factory, extraction strategies, `EmbeddingWorker` rewrite to `vec_embeddings`, `SearchService` rewrite to vec0 KNN, LLM query parser with `ParsedQuery`, `search-parser.ts` alignment, `server.ts`/`index.ts`/`sync.ts` wiring, and full test rewrites. All consumers move to `vec_embeddings` in this phase; the old `embedding` BLOB column remains but is no longer used.
+5. **Phase E — Legacy cleanup.** Drops the old `embedding`, `embedding_model`, `embedding_generated_at` columns from `emails` and deletes the old JS cosine/BLOB search code. Only runs after Phase D confirms all consumers have moved.
 6. **Phase F — Summarizer: backoff + status + on-demand endpoint + anchor.** Independent of Phases D/E but depends on Phase B types.
 7. **Phase G — Auth logout + older-than backfill.** Independent; can run in parallel with F.
 8. **Phase H — Web client.** Depends on Phase B (shared types) and should happen last so all backend endpoints it consumes exist.
@@ -65,18 +67,18 @@ Phases must be executed in order because later phases depend on earlier state:
 
 ---
 
-## Feature 1 — sqlite-vec `vec0` KNN (Phase A) `[source: both]`
+## Feature 1 — sqlite-vec `vec0` foundation (Phase A, additive only) `[source: both]`
 
-**User-facing behavior:** Vector search uses an indexed ANN table instead of loading every candidate into JS and computing cosine by hand. Fixes the existing Float64/Float32 decode bug incidentally. No API shape change.
+**User-facing behavior:** None directly; lays the foundation for vector search using an indexed ANN table. The existing `embedding` BLOB column and its consumers are untouched.
 
 **Reference:** `claude/packages/backend/src/services/db.ts:75-110, 274-306`.
 
-**Why first:** All embedding-writing code (Phase D) and search code (Phase E) must target the new table.
+**Why first:** All embedding-writing code (Phase D) and search code (Phase D) must target the new table. This phase is additive only — no columns are dropped, no consumers are modified, no tests are skipped.
 
 **Files:**
 - Create: `src/backend/db/vec-loader.ts` — resolves and loads the `sqlite-vec` native extension into a `bun:sqlite` Database.
-- Modify: `src/backend/db/schema.ts` — add `vec_embeddings` virtual-table DDL constant.
-- Modify: `src/backend/db/index.ts` — load extension before running schema; add migration that backfills existing `emailing BLOB` rows into `vec_embeddings` then drops the column.
+- Modify: `src/backend/db/schema.ts` — add `vec_embeddings` virtual-table DDL constant (alongside existing `embedding` columns).
+- Modify: `src/backend/db/index.ts` — load extension and run `VEC_SCHEMA` before running main schema.
 - Test: `test/backend/vec-embeddings.test.ts` — verifies extension loads, table created, round-trip insert + KNN returns ordered distances.
 
 ### Task 1.1: Failing test for extension loader
@@ -209,21 +211,6 @@ function runMigrations(db: Database): void {
   if (!cols.some((c) => c.name === "removed_state")) {
     db.run("ALTER TABLE emails ADD COLUMN removed_state TEXT DEFAULT NULL");
   }
-  migrateEmbeddingsToVec0(db);
-}
-
-function migrateEmbeddingsToVec0(db: Database): void {
-  const cols = db.query("PRAGMA table_info(emails)").all() as { name: string }[];
-  if (!cols.some((c) => c.name === "embedding")) return; // already migrated
-
-  // NOTE: existing BLOBs were written as Float32Array by the worker but decoded
-  // as Float64Array in search — all prior embeddings are unreliable. We drop,
-  // do not copy, so the background worker re-embeds on next run.
-  db.run("ALTER TABLE emails DROP COLUMN embedding");
-  db.run("ALTER TABLE emails DROP COLUMN embedding_model");
-  db.run("ALTER TABLE emails DROP COLUMN embedding_generated_at");
-  // Also clear ai_status to nothing — embedding is decoupled from summary status
-  // (no-op: embedding state now lives solely in vec_embeddings presence)
 }
 
 export function initDb(path: string): Database {
@@ -238,14 +225,12 @@ export function initDb(path: string): Database {
 }
 ```
 
-Also remove `embedding BLOB, embedding_model TEXT, embedding_generated_at INTEGER` from the `CREATE TABLE emails` definition in `schema.ts`.
+No column drops. The existing `embedding BLOB`, `embedding_model TEXT`, `embedding_generated_at INTEGER` columns remain untouched. They will be dropped in Phase E (legacy cleanup) after Phase D moves all consumers to `vec_embeddings`.
 
 - [ ] **Step 5: Re-run all db-adjacent tests**
 
-Run: `bun test test/backend/db.test.ts test/backend/vec-embeddings.test.ts`
-Expected: the new test passes; existing db tests pass.
-Note: `test/backend/embedding-worker.test.ts` references the removed `embedding` column and will be rewritten as a failing test at the start of Phase D (Feature 4, Task 4.3).
-Note: `test/backend/search.test.ts` `vector search` and `cosine similarity` describe blocks reference the removed `embedding` column and will be rewritten in Phase E (Feature 6, Task 6.2).
+Run: `bun test test/backend/db.test.ts test/backend/vec-embeddings.test.ts test/backend/embedding-worker.test.ts test/backend/search.test.ts`
+Expected: all pass; no skips.
 
 - [ ] **Step 6: Commit**
 
@@ -259,6 +244,8 @@ git commit -m "feat(db): migrate embeddings to sqlite-vec vec0 virtual table"
 ## Feature 2 — Shared types module (Phase B) `[source: claude]`
 
 **User-facing behavior:** None directly; prerequisite for config refactor, extraction strategies, and the web client consuming the same response types as the backend.
+
+**Note:** `ParsedQuery` is excluded from this phase. It will be defined in Phase D alongside the search parser/search service rewrite, so the type definition and all its consumers land atomically.
 
 **Reference:** `claude/packages/shared/src/types.ts`.
 
@@ -295,16 +282,6 @@ export interface Email {
   action_items: string[] | null;
   key_points: string[] | null;
   removed_state: "archived" | "deleted" | null;
-}
-
-export interface ParsedQuery {
-  filters: {
-    sender?: string;
-    date_from?: string;
-    date_to?: string;
-    subject?: string;
-  };
-  semanticQuery: string;
 }
 
 export interface LLMConfig {
@@ -616,7 +593,9 @@ git commit -m "feat(config): add GET/POST /config runtime endpoints"
 
 ---
 
-## Feature 4 — Configurable embedding provider: OpenAI-compatible + local (Phase D) `[source: both]`
+## Feature 4 — Configurable embedding provider: OpenAI-compatible + local (Phase D — atomic semantic-search cutover) `[source: both]`
+
+**This phase is part of the atomic Phase D cutover.** Features 4, 5, and 6 must land together in a single commit (or tightly-coupled commit sequence) so that no intermediate state leaves embedding/search code paths broken. See the Phase D note below for the full scope.
 
 **User-facing behavior:** `config.toml` controls which embedding backend runs. `local` loads BGE-M3 via `@huggingface/transformers` (first run downloads + caches); `openai-compatible` calls any OpenAI-shaped `/v1/embeddings` endpoint (including `baseUrl` override for local llama.cpp / vLLM). The hardcoded "mock" tag is removed; the model name is written to a new `embedding_strategies` metadata table (Phase 4b).
 
@@ -735,9 +714,9 @@ git commit -m "feat(embed): pluggable openai-compatible and local providers"
 
 (Ordering: implement Feature 5 Task 5.1 before this step so `buildEmbeddingText` exists.)
 
-> **Note:** The existing `test/backend/embedding-worker.test.ts` references the old `embedding BLOB` column which was removed in Phase A (Feature 1). It was left in place with a `describe.skip` annotation. This task removes the skip and rewrites the test for the new vec0-based worker.
+> **Note:** This task rewrites the existing `test/backend/embedding-worker.test.ts` to target `vec_embeddings` instead of the old `embedding BLOB` column. The old columns still exist in the schema but are no longer used by the worker after this task.
 
-- [ ] **Step 1: Rewrite failing test** `test/backend/embedding-worker.test.ts` — remove the `describe.skip`, replace all references to `embedding BLOB` with assertions that `vec_embeddings` now contains one row keyed by the email id.
+- [ ] **Step 1: Rewrite failing test** `test/backend/embedding-worker.test.ts` — replace references to `embedding BLOB` with assertions that `vec_embeddings` now contains one row keyed by the email id.
 
 ```ts
 import { describe, test, expect } from "bun:test";
@@ -872,7 +851,7 @@ git commit -m "feat(sync): trigger embeddings after sync cycle"
 
 ---
 
-## Feature 5 — User-pluggable extraction strategy templates (Phase D) `[source: both]`
+## Feature 5 — User-pluggable extraction strategy templates (Phase D — atomic semantic-search cutover) `[source: both]`
 
 **User-facing behavior:** Users edit `config.toml` → `[content_extraction.strategies.<name>]` with a `template` containing `{{subject}}`/`{{body_text}}` placeholders, then set `active_strategy`. The embedding worker applies the template when constructing the text to embed. Summarization is unaffected.
 
@@ -949,7 +928,9 @@ git commit -m "feat(embed): template-based extraction strategies"
 
 ---
 
-## Feature 6 — LLM-parsed natural-language search (Phase E) `[source: both]`
+## Feature 6 — LLM-parsed natural-language search (Phase D — atomic semantic-search cutover) `[source: both]`
+
+**This phase is part of the atomic Phase D cutover.** Must land together with Features 4 and 5. The `ParsedQuery` type (defined here, not in Phase B) and the search parser/search service rewrite all move in the same commit so no intermediate state has type/consumer skew.
 
 **User-facing behavior:** User types `"emails from alice about the invoice last week"`. The LLM parses this into `{ filters: { sender: "alice", date_from: "2026-04-03", date_to: "2026-04-10" }, semanticQuery: "invoice" }`. The backend applies SQL filters for structured pieces and vec0 KNN for the semantic part. Query is combined with existing operator parser: if operators are present, they win; otherwise fall back to LLM parse.
 
@@ -1101,6 +1082,34 @@ private async vectorSearch(freeText: string, where: string, params: any[], limit
 ```bash
 git add src/backend/services/search.ts src/backend/server.ts test/backend/services/search-llm.test.ts
 git commit -m "feat(search): vec0 KNN + LLM natural-language query parsing"
+```
+
+---
+
+## Feature 6b — Legacy cleanup: drop old embedding columns (Phase E) `[source: both]`
+
+**User-facing behavior:** None. Removes the old `embedding BLOB`, `embedding_model TEXT`, and `embedding_generated_at INTEGER` columns from the `emails` table and deletes the old JS cosine/BLOB search code.
+
+**Why a separate phase:** Column drops are destructive and irreversible. This phase only runs after Phase D confirms all consumers (`EmbeddingWorker`, `SearchService`, tests) have moved to `vec_embeddings`.
+
+**Files:**
+- Modify: `src/backend/db/schema.ts` — remove `embedding BLOB`, `embedding_model TEXT`, `embedding_generated_at INTEGER` from `CREATE TABLE emails`.
+- Modify: `src/backend/db/index.ts` — add migration that drops the three columns if they still exist.
+- Modify: `src/backend/services/search.ts` — delete the old `vectorSearch` JS-side cosine method (replaced by vec0 KNN in Phase D).
+- Modify: any remaining references to `embedding` column in tests.
+
+### Task 6b.1: Drop legacy columns
+
+- [ ] **Step 1: Failing test** — assert that `PRAGMA table_info(emails)` no longer contains `embedding`, `embedding_model`, or `embedding_generated_at` after `initDb`.
+- [ ] **Step 2: Remove columns from `schema.ts` DDL**
+- [ ] **Step 3: Add migration in `index.ts`** — `ALTER TABLE emails DROP COLUMN embedding` etc. (guarded by existence check).
+- [ ] **Step 4: Delete old cosine search code from `search.ts`**
+- [ ] **Step 5: Run full test suite — all pass, no skips.**
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/backend/db/schema.ts src/backend/db/index.ts src/backend/services/search.ts test/
+git commit -m "refactor(db): drop legacy embedding columns after vec0 cutover"
 ```
 
 ---
@@ -1951,27 +1960,17 @@ Items present in the comparison docs that are intentionally NOT ported, because 
 
 ## Known-bug note (glm `vectorSearch` Float64 decode)
 
-The current broken decode in `src/backend/services/search.ts:107` is **deleted** as part of Feature 6 (search rewrite) / Feature 1 (vec0 migration). After Phase A the `emails.embedding` column no longer exists, so there is nothing to decode; after Phase E the JS-side cosine path is replaced with a vec0 `MATCH … AND k = ?` query. No separate fix task is needed — just verify when you delete the old `vectorSearch` body that no caller still references `row.embedding` buffers.
+The current broken decode in `src/backend/services/search.ts:107` is deleted as part of Phase D (Feature 6 — search rewrite). After Phase D the JS-side cosine path is replaced with a vec0 `MATCH … AND k = ?` query. The old `embedding BLOB` column remains until Phase E (Feature 6b) drops it. No separate fix task is needed — just verify when you delete the old `vectorSearch` body that no caller still references `row.embedding` buffers.
 
 ---
 
 ## Self-review checklist
 
-- **Spec coverage:** 21 features enumerated → Feature 1 (sqlite-vec), 2 (shared types), 3 (config endpoints), 4 (embed provider), 5 (extraction strategies), 6 (LLM search), 7 (429 backoff), 8 (summarizer status), 9 (anchor_unsummarized backend), 10 (on-demand summary), 11 (logout), 12 (older-than), 13 (web client), 14 (HTML iframe — folded into 13), 15 (email list filters + inbox-only default, codex), 16 (search scores in UI, codex), 17 (TUI anchor-unsummarized keybinding, codex), 18 (auth callback redirect, nice-to-have), 19 (auth status email, nice-to-have), 20 (config auto-create, nice-to-have), 21 (Google env overrides, nice-to-have). All present.
+- **Phase gate rule:** No phase may introduce `describe.skip` or leave runtime callers pointing at removed schema.
+- **Spec coverage:** 22 features enumerated → Feature 1 (sqlite-vec additive), 2 (shared types), 3 (config endpoints), 4 (embed provider), 5 (extraction strategies), 6 (LLM search), 6b (legacy cleanup), 7 (429 backoff), 8 (summarizer status), 9 (anchor_unsummarized backend), 10 (on-demand summary), 11 (logout), 12 (older-than), 13 (web client), 14 (HTML iframe — folded into 13), 15 (email list filters + inbox-only default), 16 (search scores in UI), 17 (TUI anchor-unsummarized keybinding), 18 (auth callback redirect, nice-to-have), 19 (auth status email, nice-to-have), 20 (config auto-create, nice-to-have), 21 (Google env overrides, nice-to-have). All present.
 - **Source tags:** every feature carries a `[source: claude|codex|both]` marker; nice-to-haves additionally carry `[nice-to-have]`.
-- **Bug note:** Float64/Float32 bug called out and tied to Phase A.
-- **Ordering:** Phases A→H explicitly ordered; Task 4.3 depends on Task 5.1 — called out.
+- **Bug note:** Float64/Float32 bug fixed incidentally by Phase D switching to vec0 KNN. Old column dropped in Phase E.
+- **Ordering:** Phases A→I explicitly ordered; Phase D merges old D+E into one atomic cutover; Phase E is legacy cleanup after D.
 - **Stack differences:** Extension loading, TOML persistence, shared types, web location all addressed up front.
 - **File paths:** All absolute inside the glm worktree (`src/backend/...`, `test/backend/...`, `web/...`).
 - **References:** Each feature cites `claude/packages/...` paths for the implementing agent to consult.
-
----
-
-## Execution handoff
-
-Plan saved to `/home/ckolbegger/src/gmail-sweep/worktrees/glm/docs/plan-port-claude-features-to-glm.md`. Two execution options:
-
-1. **Subagent-driven (recommended)** — dispatch fresh subagent per task, review between tasks.
-2. **Inline execution** — executing-plans with batch checkpoints.
-
-Which approach?

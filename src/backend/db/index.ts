@@ -7,19 +7,16 @@ function runMigrations(db: Database): void {
   if (!cols.some((c) => c.name === "removed_state")) {
     db.run("ALTER TABLE emails ADD COLUMN removed_state TEXT DEFAULT NULL");
   }
-  migrateEmbeddingsToVec0(db);
-}
-
-function migrateEmbeddingsToVec0(db: Database): void {
-  const cols = db.query("PRAGMA table_info(emails)").all() as { name: string }[];
-  if (!cols.some((c) => c.name === "embedding")) return; // already migrated
-
-  // Existing BLOBs were written as Float32Array by the worker but decoded
-  // as Float64Array in search — all prior embeddings are unreliable. Drop,
-  // do not copy, so the background worker re-embeds on next run.
-  db.run("ALTER TABLE emails DROP COLUMN embedding");
-  db.run("ALTER TABLE emails DROP COLUMN embedding_model");
-  db.run("ALTER TABLE emails DROP COLUMN embedding_generated_at");
+  // Restore embedding columns if a prior destructive migration removed them.
+  if (!cols.some((c) => c.name === "embedding")) {
+    db.run("ALTER TABLE emails ADD COLUMN embedding BLOB");
+  }
+  if (!cols.some((c) => c.name === "embedding_model")) {
+    db.run("ALTER TABLE emails ADD COLUMN embedding_model TEXT");
+  }
+  if (!cols.some((c) => c.name === "embedding_generated_at")) {
+    db.run("ALTER TABLE emails ADD COLUMN embedding_generated_at INTEGER");
+  }
 }
 
 export function initDb(path: string): Database {

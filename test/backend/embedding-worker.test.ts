@@ -38,9 +38,7 @@ function seedEmail(db: Database, overrides: Partial<{
   return id;
 }
 
-// TODO(Phase D - Feature 4 Task 4.3): Rewrite these tests for vec0-based worker.
-// The embedding/embedding_model/embedding_generated_at columns were removed in Phase A.
-describe.skip("EmbeddingWorker", () => {
+describe("EmbeddingWorker", () => {
   let db: Database;
   let cleanup: () => void;
 

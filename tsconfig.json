@@ -14,6 +14,7 @@
     "verbatimModuleSyntax": true,
     "paths": {
       "@backend/*": ["./src/backend/*"],
+      "@shared/*": ["./src/shared/*"],
       "@tui/*": ["./src/tui/*"],
       "@test/*": ["./test/*"]
     }
