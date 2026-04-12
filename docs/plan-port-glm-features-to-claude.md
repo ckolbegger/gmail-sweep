@@ -24,8 +24,8 @@ F1 historyId persistence ─┐
 F5 listLabels ────────────┴─► F11 label filter
 F6 removed_state migration ──► F7 soft-delete archive/trash rollback
                               └► F8 mark read / unread
+F16 trashEmail INBOX bug fix (independent; superseded by F7 but fixes live bug immediately)
 F9 unread filter (independent, only needs F6 if unread filter should ignore soft-deleted — it should)
-F4 syncInProgress mutex (independent)
 F10 raw message passthrough (independent)
 F12 operator search parser (independent of above, integrates with existing SearchService)
 F13 /status healthcheck (independent)
@@ -71,16 +71,17 @@ Web (`packages/web/src/`):
 
 Execute features in this order. Each phase ends with passing tests and a commit.
 
-- **Phase A (schema + types foundation):** F6 (removed_state), F1 (historyId persistence), shared type additions.
-- **Phase B (Gmail adapter surface):** F5 (listLabels), new gmail methods (`listHistory`, `markRead`, `markUnread`, `getRawMessage`).
-- **Phase C (email routes):** F7 (soft-delete + rollback), F8 (read/unread), F10 (raw), F9/F11 (unread + label filters).
-- **Phase D (sync):** F2 (incremental), F4 (mutex), F14 (gap fill/abandon), F3 (auto-poller).
-- **Phase E (search + status):** F12 (operator parser), F13 (/status).
-- **Phase F (terminal):** F15 (detail-panel toggle).
+- **Phase A (schema + types foundation):** F6 (removed_state) `[source: both]`, F1 (historyId persistence) `[source: both]`, shared type additions.
+- **Phase B (Gmail adapter surface):** F5 (listLabels) `[source: both]`, new gmail methods (`listHistory`, `markRead`, `markUnread`, `getRawMessage`).
+- **Phase C (email routes):** F16 (trashEmail INBOX bug fix) `[source: codex]`, F7 (soft-delete + rollback) `[source: both]`, F8 (read/unread) `[source: both]`, F10 (raw) `[source: both]`, F9/F11 (unread + label filters) `[source: both]`.
+- **Phase D (sync):** F2 (incremental) `[source: both]`, F14 (gap fill/abandon) `[source: both]`, F3 (auto-poller) `[source: both]`.
+- **Phase E (search + status):** F12 (operator parser) `[source: both]`, F13 (/status) `[source: claude]`.
+- **Phase F (terminal):** F15 (detail-panel toggle) `[source: both]`.
+- **Phase G (nice-to-haves):** F17 Gmail API retry/backoff `[source: codex]`, F18 verbose LLM logging `[source: codex]`, F19 sync limited to `INBOX` at Gmail API `[source: codex]`, F20 periodic summarizer timer `[source: codex]`. All marked `[nice-to-have]`.
 
 ---
 
-## Feature F1: `historyId` persistence in sync state
+## Feature F1: `historyId` persistence in sync state `[source: both]`
 
 **glm reference:** `src/backend/services/sync.ts` lines 86–92, 184–190; `src/backend/db/schema.ts` — glm uses a key/value `sync_state` table and writes `last_history_id`.
 
@@ -178,7 +179,7 @@ git commit -m "feat(db): persist lastHistoryId in sync_state"
 
 ---
 
-## Feature F2: `historyId`-based incremental sync
+## Feature F2: `historyId`-based incremental sync `[source: both]`
 
 **glm reference:** `src/backend/services/sync.ts` `syncIncremental()` lines 120–193; `src/backend/gmail/gmail-api.ts` `listHistory()` lines 174–207.
 
@@ -375,7 +376,7 @@ git commit -m "feat(sync): historyId-based incremental sync with expiry fallback
 
 ---
 
-## Feature F3: Auto-poller (background periodic sync)
+## Feature F3: Auto-poller (background periodic sync) `[source: both]`
 
 **glm reference:** `src/backend/services/auto-poller.ts` — `setInterval` with re-entrancy guard + `isAuthorized` check.
 
@@ -508,7 +509,11 @@ git commit -m "feat(backend): auto-poller for periodic background sync"
 
 ---
 
-## Feature F4: `syncInProgress` mutex exposed in `/sync/status`
+## Feature F4: `syncInProgress` mutex exposed in `/sync/status` `[SKIPPED — see Skipped items at end]`
+
+> Skipped per user direction: claude already has equivalent behavior in a different shape (synchronous `/sync` that returns detailed counts rather than glm's 202 + in-memory mutex). Retained here for context; not in execution order. See "Skipped items" section at the end of the document.
+
+Original F4 content below (do not execute):
 
 **glm reference:** `src/backend/routes/sync.ts` — module-level `let syncInProgress` flag, set around `syncService.syncNewest`, surfaced in `/sync/status`.
 
@@ -587,7 +592,7 @@ git commit -m "feat(sync): expose syncInProgress mutex in /sync/status"
 
 ---
 
-## Feature F5: `listLabels` adapter method + `GET /labels` route
+## Feature F5: `listLabels` adapter method + `GET /labels` route `[source: both]`
 
 **glm reference:** `src/backend/gmail/gmail-api.ts` `listLabels()` lines 168–172.
 
@@ -675,7 +680,7 @@ git commit -m "feat(gmail): list labels adapter and GET /labels route"
 
 ---
 
-## Feature F6: `removed_state` column (soft-delete schema)
+## Feature F6: `removed_state` column (soft-delete schema) `[source: both]`
 
 **glm reference:** `src/backend/db/schema.ts` — `emails.removed_state TEXT NULL`, queries filter `WHERE removed_state IS NULL`.
 
@@ -750,7 +755,7 @@ git commit -m "feat(db): add removed_state soft-delete column"
 
 ---
 
-## Feature F7: Soft-delete archive/trash with rollback on Gmail API failure
+## Feature F7: Soft-delete archive/trash with rollback on Gmail API failure `[source: both]`
 
 **glm reference:** `src/backend/routes/emails.ts` lines 105–139. Pattern: set `removed_state`, fire Gmail API, on failure revert `removed_state = NULL`.
 
@@ -830,7 +835,7 @@ git commit -m "feat(emails): soft-delete archive/trash with rollback on Gmail fa
 
 ---
 
-## Feature F8: Mark read / mark unread endpoints
+## Feature F8: Mark read / mark unread endpoints `[source: both]`
 
 **glm reference:** `src/backend/routes/emails.ts` lines 141–173; uses `modifyLabels(id, { addLabelIds: ['UNREAD'], removeLabelIds: [] })`.
 
@@ -916,7 +921,7 @@ git commit -m "feat(emails): mark read/unread endpoints"
 
 ---
 
-## Feature F9: Unread filter on `GET /emails` (`?unread=true|false`)
+## Feature F9: Unread filter on `GET /emails` (`?unread=true|false`) `[source: both]`
 
 **glm reference:** `src/backend/routes/emails.ts` lines 12–22.
 
@@ -961,7 +966,7 @@ git commit -m "feat(emails): unread filter on GET /emails"
 
 ---
 
-## Feature F10: Raw Gmail message passthrough (`GET /emails/:id/raw`)
+## Feature F10: Raw Gmail message passthrough (`GET /emails/:id/raw`) `[source: both]`
 
 **glm reference:** `src/backend/routes/emails.ts` lines 93–103 — returns the adapter's `getMessage(id)` as JSON.
 
@@ -1023,7 +1028,7 @@ git commit -m "feat(emails): raw gmail message passthrough endpoint"
 
 ---
 
-## Feature F11: Label-name filter on `GET /emails` (`?label=`)
+## Feature F11: Label-name filter on `GET /emails` (`?label=`) `[source: both]`
 
 **glm reference:** `src/backend/routes/emails.ts` lines 24–28 using `json_each(labels)`. glm stores labels as objects with `{id, name}` — hence `json_extract`. Claude stores labels as a flat string array. So claude just needs `labels LIKE '%"LabelName"%'` (JSON-encoded check, safer than plain LIKE because of surrounding quotes).
 
@@ -1069,7 +1074,7 @@ git commit -m "feat(emails): label filter on GET /emails"
 
 ---
 
-## Feature F12: Operator-based search parser
+## Feature F12: Operator-based search parser `[source: both]`
 
 **glm reference:** `src/backend/services/search-parser.ts` — parses `from:`, `to:`, `subject:`, `before:`, `after:`, `label:`, `is:read|unread|starred`, `has:actions|no-actions`.
 
@@ -1235,7 +1240,9 @@ git commit -m "feat(search): operator-based query parser complementing LLM searc
 
 ---
 
-## Feature F13: `/status` healthcheck with DB probe
+## Feature F13: `/status` healthcheck with DB probe `[source: claude]`
+
+> Note: codex comparison observes that claude already exposes `GET /health`. This feature adds a richer `/status` endpoint with a DB probe and version info. If the implementing agent judges the existing `/health` sufficient, this feature may be downgraded to nice-to-have.
 
 **glm reference:** `src/backend/routes/status.ts`.
 
@@ -1304,7 +1311,7 @@ git commit -m "feat(backend): /status healthcheck with db probe"
 
 ---
 
-## Feature F14: Manual gap fill / abandon endpoints
+## Feature F14: Manual gap fill / abandon endpoints `[source: both]`
 
 **glm reference:** `src/backend/routes/sync.ts` lines 59–85 and `src/backend/services/gap-manager.ts`. glm has a status machine (`open`/`filling`/`closed`); claude has a simpler gap model (boundary dates, no status) — good enough.
 
@@ -1421,7 +1428,7 @@ git commit -m "feat(sync): manual gap fill and abandon endpoints"
 
 ---
 
-## Feature F15: TUI detail-panel full-width toggle
+## Feature F15: TUI detail-panel full-width toggle `[source: both]`
 
 **glm reference:** `src/tui/components/detail-panel.ts` lines 10, 74–100 — boolean `showingFullWidth` state, `toggleView()` / `setFullWidth()` / `setNormalView()` methods. Bound to a key in `src/tui/app.ts` lines 52/60.
 
@@ -1468,9 +1475,370 @@ git commit -m "feat(tui): detail-panel full-width toggle"
 
 ---
 
+## Feature F16: Fix `trashEmail()` leaves `INBOX` label so deleted mail reappears `[source: codex]`
+
+**Bug:** Codex found that `trashEmail()` in `packages/backend/src/services/db.ts` adds the `TRASH` label but does not remove `INBOX`, and `listEmails()` still matches `labels LIKE '%INBOX%'`, so trashed messages reappear on the next `/emails` reload. glm avoids this via `removed_state IS NULL` filtering.
+
+**Phase:** Execute at the start of Phase C, BEFORE F7. F7 replaces the label-based removal model with `removed_state` and will naturally supersede this bug, but landing a focused fix first means:
+1. The bug is gone on its own commit — bisectable, shippable independently of F7.
+2. F7's tests have a clean baseline (no pre-existing `trashEmail()` misbehavior polluting fixtures).
+3. Between F16 and F7 merging, users are not exposed to the bug.
+
+**Files:**
+- Modify: `packages/backend/src/services/db.ts` — `trashEmail()` and `archiveEmail()` (check if archive has the same class of bug).
+- Modify: `packages/backend/src/services/db.test.ts`
+
+- [ ] **Step 1: Investigate both `trashEmail()` and `archiveEmail()`**
+
+Read `packages/backend/src/services/db.ts`. Confirm:
+- `trashEmail(id)` current behavior: adds `TRASH` to labels JSON array, leaves `INBOX`.
+- `archiveEmail(id)` current behavior: likely removes `INBOX` already (archive is "remove from inbox"); verify.
+- `listEmails()` inbox default filter: `labels LIKE '%INBOX%'`.
+
+- [ ] **Step 2: Write failing test**
+
+In `packages/backend/src/services/db.test.ts`:
+
+```ts
+it('trashEmail removes INBOX so the email no longer appears in listEmails', () => {
+  const db = createDb(':memory:');
+  db.upsertEmail({
+    id: 'bug1', threadId: 't', subject: 's', from: 'x',
+    date: '2025-01-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+    labels: ['INBOX', 'UNREAD'], summary: null,
+  });
+  expect(db.listEmails({}).map(e => e.id)).toContain('bug1');
+  db.trashEmail('bug1');
+  expect(db.listEmails({}).map(e => e.id)).not.toContain('bug1');
+  const row = db.getEmail('bug1');
+  expect(row?.labels).toContain('TRASH');
+  expect(row?.labels).not.toContain('INBOX');
+  db.close();
+});
+```
+
+- [ ] **Step 3: Run and verify fail**
+
+```
+cd packages/backend && npx vitest run src/services/db.test.ts -t trashEmail
+```
+
+Expected: FAIL — asserts that `bug1` is absent from list, but current `trashEmail` leaves `INBOX` so list still contains it.
+
+- [ ] **Step 4: Implement fix**
+
+In `packages/backend/src/services/db.ts`, update `trashEmail`:
+
+```ts
+trashEmail(id) {
+  const row = db.prepare('SELECT labels FROM emails WHERE id = ?').get(id) as { labels: string } | undefined;
+  if (!row) return;
+  const labels = (JSON.parse(row.labels) as string[]).filter(l => l !== 'INBOX');
+  if (!labels.includes('TRASH')) labels.push('TRASH');
+  db.prepare('UPDATE emails SET labels = ? WHERE id = ?').run(JSON.stringify(labels), id);
+},
+```
+
+If the investigation in Step 1 found `archiveEmail` has the same shape of bug, apply the analogous fix (remove `INBOX`, don't add `TRASH`).
+
+- [ ] **Step 5: Verify pass**
+
+```
+cd packages/backend && npx vitest run src/services/db.test.ts
+```
+
+Expected: PASS.
+
+- [ ] **Step 6: Commit**
+
+```
+git add packages/backend/src/services/db.ts packages/backend/src/services/db.test.ts
+git commit -m "fix(db): trashEmail removes INBOX label so deleted mail stays hidden"
+```
+
+---
+
+## Feature F17: Gmail API retry/backoff for 429/500/503 `[source: codex]` `[nice-to-have]`
+
+**glm reference:** `src/backend/gmail/gmail-api.ts` — wraps every Gmail call in a retry helper with exponential backoff for HTTP 429, 500, 503.
+
+**Claude today:** `packages/backend/src/services/gmail.ts` calls `google.gmail(...)` directly with no retry layer. Transient 429/500/503 responses surface as route-level 500s.
+
+**Approach:** Add an internal `withRetry<T>(fn: () => Promise<T>): Promise<T>` helper private to `services/gmail.ts`. Retry on errors whose `.code` (or `.response?.status`) is 429, 500, or 503. Cap at 4 attempts. Backoff: 500ms, 1s, 2s (plus jitter ±100ms). Do NOT retry on 4xx other than 429.
+
+**Files:**
+- Modify: `packages/backend/src/services/gmail.ts`
+- Modify: `packages/backend/src/services/gmail.test.ts`
+
+- [ ] **Step 1: Failing test**
+
+```ts
+it('withRetry retries twice on 429 then succeeds', async () => {
+  let calls = 0;
+  const fn = vi.fn().mockImplementation(async () => {
+    calls++;
+    if (calls < 3) { const err: any = new Error('rate'); err.code = 429; throw err; }
+    return 'ok';
+  });
+  const result = await withRetryForTest(fn, { maxAttempts: 4, baseDelayMs: 1 });
+  expect(result).toBe('ok');
+  expect(fn).toHaveBeenCalledTimes(3);
+});
+
+it('withRetry does not retry on 400', async () => {
+  const fn = vi.fn().mockImplementation(async () => { const err: any = new Error('bad'); err.code = 400; throw err; });
+  await expect(withRetryForTest(fn, { maxAttempts: 4, baseDelayMs: 1 })).rejects.toMatchObject({ code: 400 });
+  expect(fn).toHaveBeenCalledTimes(1);
+});
+```
+
+- [ ] **Step 2: Verify fail**
+
+```
+cd packages/backend && npx vitest run src/services/gmail.test.ts -t withRetry
+```
+
+Expected: FAIL — `withRetryForTest` not exported.
+
+- [ ] **Step 3: Implement**
+
+In `packages/backend/src/services/gmail.ts`:
+
+```ts
+interface RetryOpts { maxAttempts: number; baseDelayMs: number; }
+const RETRIABLE_CODES = new Set([429, 500, 503]);
+
+async function withRetry<T>(fn: () => Promise<T>, opts: RetryOpts = { maxAttempts: 4, baseDelayMs: 500 }): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= opts.maxAttempts; attempt++) {
+    try { return await fn(); }
+    catch (err: any) {
+      const code = err?.code ?? err?.response?.status;
+      if (!RETRIABLE_CODES.has(code) || attempt === opts.maxAttempts) throw err;
+      const jitter = Math.floor(Math.random() * 200) - 100;
+      const delay = Math.max(0, opts.baseDelayMs * 2 ** (attempt - 1) + jitter);
+      await new Promise(r => setTimeout(r, delay));
+      lastErr = err;
+    }
+  }
+  throw lastErr;
+}
+
+// Export for tests only (alias avoids public API surface):
+export const withRetryForTest = withRetry;
+```
+
+Wrap every `await gmail.users.*` call in the service with `withRetry(() => gmail.users.*.X({...}))`. Keep the interface unchanged — callers see no difference.
+
+- [ ] **Step 4: Verify and commit**
+
+```
+cd packages/backend && npx vitest run src/services/gmail.test.ts
+git add packages/backend/src/services/gmail.ts packages/backend/src/services/gmail.test.ts
+git commit -m "feat(gmail): retry with exponential backoff on 429/500/503"
+```
+
+---
+
+## Feature F18: Verbose LLM request/response logging `[source: codex]` `[nice-to-have]`
+
+**glm reference:** `src/backend/llm/openai-adapter.ts` and `src/backend/llm/anthropic-adapter.ts` — log request prompt and response body at a configurable verbosity level.
+
+**Claude today:** `packages/backend/src/services/ai.ts` makes LLM calls with no tracing beyond error logs. Debugging prompt/response issues requires attaching a proxy.
+
+**Approach:** Add `llmVerboseLogging: boolean` to `AppConfig`. When true, log request (model, messages snippet or full, max tokens) at `info` and response (usage tokens, content snippet) at `info`. Truncate content to 500 chars per line to avoid flooding. Never log API keys or full auth headers.
+
+**Files:**
+- Modify: `packages/backend/src/services/ai.ts`
+- Modify: `packages/backend/src/services/ai.test.ts`
+- Modify: `packages/shared/src/types.ts` — `AppConfig.llmVerboseLogging?: boolean`.
+- Modify: `packages/backend/src/config.ts` — load/default.
+
+- [ ] **Step 1: Failing test**
+
+```ts
+it('logs request and response when verbose logging enabled', async () => {
+  const logs: string[] = [];
+  const logger = { info: (msg: string) => logs.push(msg), error: () => {} };
+  const ai = createAiService({
+    provider: 'openai', apiKey: 'k', model: 'gpt', baseUrl: 'http://x', verbose: true, logger,
+  } as any);
+  // Mock fetch to return a canned response
+  // ...
+  await ai.summarizeEmail({ subject: 's', bodyText: 'hello' } as any);
+  expect(logs.some(l => l.includes('[ai] request'))).toBe(true);
+  expect(logs.some(l => l.includes('[ai] response'))).toBe(true);
+});
+```
+
+- [ ] **Step 2: Verify fail**
+
+- [ ] **Step 3: Implement**
+
+In `services/ai.ts`, accept an optional `verbose: boolean` and `logger` (fall back to `console`). Inside each LLM call:
+
+```ts
+if (verbose) logger.info(`[ai] request model=${model} prompt=${truncate(prompt, 500)}`);
+const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
+const json = await res.json();
+if (verbose) logger.info(`[ai] response usage=${JSON.stringify(json.usage ?? {})} content=${truncate(extract(json), 500)}`);
+```
+
+Where `truncate(s, n) = s.length > n ? s.slice(0, n) + '…' : s`.
+
+In `server.ts`, pass `verbose: config.llmVerboseLogging ?? false, logger: app.log` into `createAiService`.
+
+- [ ] **Step 4: Verify and commit**
+
+```
+cd packages/backend && npx vitest run src/services/ai.test.ts
+git add packages/backend/src/services/ai.ts packages/backend/src/services/ai.test.ts packages/backend/src/config.ts packages/backend/src/server.ts packages/shared/src/types.ts
+git commit -m "feat(ai): opt-in verbose LLM request/response logging"
+```
+
+---
+
+## Feature F19: Sync fetches only `INBOX` from Gmail API `[source: codex]` `[nice-to-have]`
+
+**glm reference:** `src/backend/services/sync.ts` and `src/backend/services/gap-manager.ts` — pass `labelIds: ['INBOX']` to `users.messages.list`.
+
+**Claude today:** `packages/backend/src/services/gmail.ts` `fetchMessagesSince`/`fetchMessagesInRange` build date-only queries and do NOT pass `labelIds`, so archived/trashed Gmail messages falling within the date window get pulled into the DB and filtered out only at list time via `labels LIKE '%INBOX%'`. This wastes API quota and DB writes.
+
+**Approach:** Add `labelIds: ['INBOX']` to the `users.messages.list` calls used during sync. Do NOT apply this to `listHistory` (F2) — history is cursor-based and Gmail already scopes deltas. Do NOT apply to `getRawMessage` (F10) or `fetchMessagesById` (F2) — those are explicit single-message fetches.
+
+**Files:**
+- Modify: `packages/backend/src/services/gmail.ts`
+- Modify: `packages/backend/src/services/gmail.test.ts`
+
+- [ ] **Step 1: Failing test**
+
+```ts
+it('fetchMessagesSince passes labelIds=[INBOX]', async () => {
+  const listMock = vi.fn().mockResolvedValue({ data: { messages: [], historyId: '1' } });
+  const getMock = vi.fn();
+  // inject google.gmail mock that records .users.messages.list calls
+  // ...
+  await gmail.fetchMessagesSince(null, 10);
+  expect(listMock).toHaveBeenCalledWith(expect.objectContaining({ labelIds: ['INBOX'] }));
+});
+```
+
+- [ ] **Step 2: Verify fail**
+
+- [ ] **Step 3: Implement**
+
+In `services/gmail.ts`, in `fetchMessagesSince` and `fetchMessagesInRange`, change:
+
+```ts
+const res = await gmail.users.messages.list({ userId: 'me', q: query, maxResults });
+```
+
+to:
+
+```ts
+const res = await gmail.users.messages.list({ userId: 'me', q: query, maxResults, labelIds: ['INBOX'] });
+```
+
+- [ ] **Step 4: Verify and commit**
+
+```
+cd packages/backend && npx vitest run src/services/gmail.test.ts
+git add packages/backend/src/services/gmail.ts packages/backend/src/services/gmail.test.ts
+git commit -m "feat(gmail): restrict sync list calls to INBOX label"
+```
+
+---
+
+## Feature F20: Periodic summarizer timer independent of sync `[source: codex]` `[nice-to-have]`
+
+**glm reference:** `src/backend/services/summary-worker.ts` runs a `setInterval` loop independent of sync; claude's summarizer only runs when explicitly triggered (`summarizer.trigger()` after sync).
+
+**Claude today:** `packages/backend/src/services/summarizer.ts` exports `trigger()` which kicks a single run. After the run drains, the worker goes idle until the next sync. Messages that fail with `429` and get skipped in one run don't get retried until the next sync.
+
+**Approach:** Add an optional periodic timer inside `createSummarizer` that calls the existing drain loop on an interval. Controlled by `config.summarizer.intervalMs` (default `0` = disabled). Re-entry guarded the same way F3's auto-poller is.
+
+**Files:**
+- Modify: `packages/backend/src/services/summarizer.ts`
+- Modify: `packages/backend/src/services/summarizer.test.ts`
+- Modify: `packages/backend/src/server.ts` — start/stop timer with the app.
+- Modify: `packages/shared/src/types.ts` — `AppConfig.summarizer?: { intervalMs?: number }`.
+
+- [ ] **Step 1: Failing test**
+
+```ts
+it('periodic summarizer drains on interval', async () => {
+  vi.useFakeTimers();
+  const summarizer = createSummarizer({ /* deps */, intervalMs: 1000 });
+  const drainSpy = vi.spyOn(summarizer as any, 'drain');
+  summarizer.startTimer();
+  await vi.advanceTimersByTimeAsync(2500);
+  expect(drainSpy).toHaveBeenCalledTimes(2);
+  summarizer.stopTimer();
+  vi.useRealTimers();
+});
+```
+
+- [ ] **Step 2: Verify fail**
+
+- [ ] **Step 3: Implement**
+
+In `services/summarizer.ts` add to the returned interface:
+
+```ts
+startTimer(): void;
+stopTimer(): void;
+```
+
+Implementation:
+
+```ts
+let timer: ReturnType<typeof setInterval> | null = null;
+// ... inside factory
+startTimer() {
+  if (timer || !opts.intervalMs || opts.intervalMs <= 0) return;
+  timer = setInterval(() => { void trigger(); }, opts.intervalMs);
+},
+stopTimer() { if (timer) { clearInterval(timer); timer = null; } },
+```
+
+In `server.ts`, after constructing the summarizer:
+
+```ts
+summarizer.startTimer();
+app.addHook('onClose', async () => summarizer.stopTimer());
+```
+
+Extend `AppConfig` in shared types:
+
+```ts
+export interface AppConfig {
+  // ...
+  summarizer?: { intervalMs?: number };
+}
+```
+
+- [ ] **Step 4: Verify and commit**
+
+```
+cd packages/backend && npx vitest run src/services/summarizer.test.ts
+git add packages/backend/src/services/summarizer.ts packages/backend/src/services/summarizer.test.ts packages/backend/src/server.ts packages/shared/src/types.ts
+git commit -m "feat(summarizer): optional periodic timer independent of sync"
+```
+
+---
+
+## Skipped items
+
+Items present in the comparisons but deliberately NOT planned for porting:
+
+- **F4 `syncInProgress` mutex / fire-and-forget `/sync`** `[source: both]` — claude already has equivalent functionality in a different shape: `/sync` is synchronous and returns detailed counts, which is strictly more informative than glm's `202 { status: "syncing" }` + in-memory mutex. Porting glm's async contract would be a regression, not an improvement. Clients differ; don't unify.
+- **Page-token-based gap tracking** `[source: both]` — claude uses date-boundary gaps (`sync_gaps.newer_boundary`/`older_boundary`); glm uses pageToken cursors. Different models of the same problem. Claude's model is already implemented and works.
+
+---
+
 ## Self-review checklist
 
-- **Spec coverage:** F1–F15 map 1:1 to the 15 feature bullets in the user's scope. Check.
+- **Spec coverage:** F1–F15 map 1:1 to the original 15 feature bullets. F16 adds the `trashEmail()` bug fix (Codex finding, bug not feature). F17–F20 add Codex-only nice-to-haves. F4 is skipped (see Skipped items). Check.
 - **Dependency ordering:** F6 (removed_state) lands in Phase A before F2 (incremental sync, which calls `markEmailRemoved` on messagesDeleted) and before F7/F8 (routes that use it). F5 (listLabels) lands before F11 (label filter route). F1 (historyId persistence) lands before F2. F4 (mutex) is standalone.
 - **Type consistency:**
   - `DbHandle` additions: `setLastHistoryId`, `markEmailRemoved`, `clearEmailRemoved`, `setReadState`, `ping`, `getGap` — all consistently named.
