@@ -19,9 +19,6 @@ CREATE TABLE IF NOT EXISTS emails (
   key_points TEXT,
   summary_model TEXT,
   summary_generated_at INTEGER,
-  embedding BLOB,
-  embedding_model TEXT,
-  embedding_generated_at INTEGER,
   removed_state TEXT DEFAULT NULL
 );
 
@@ -42,5 +39,14 @@ CREATE TABLE IF NOT EXISTS gaps (
   status TEXT DEFAULT 'open',
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
+);
+`;
+
+export const EMBEDDING_DIMENSION = 1024;
+
+export const VEC_SCHEMA = `
+CREATE VIRTUAL TABLE IF NOT EXISTS vec_embeddings USING vec0(
+  embedding float[${EMBEDDING_DIMENSION}] distance_metric=cosine,
+  +email_id TEXT
 );
 `;

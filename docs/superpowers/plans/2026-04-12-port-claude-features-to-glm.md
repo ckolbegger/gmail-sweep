@@ -242,8 +242,10 @@ Also remove `embedding BLOB, embedding_model TEXT, embedding_generated_at INTEGE
 
 - [ ] **Step 5: Re-run all db-adjacent tests**
 
-Run: `bun test test/backend/db.test.ts test/backend/vec-embeddings.test.ts test/backend/embedding-worker.test.ts`
-Expected: the new test passes; existing tests may fail if they reference `embedding` column — mark them skipped with a TODO that they'll be rewritten in Phase D.
+Run: `bun test test/backend/db.test.ts test/backend/vec-embeddings.test.ts`
+Expected: the new test passes; existing db tests pass.
+Note: `test/backend/embedding-worker.test.ts` references the removed `embedding` column and will be rewritten as a failing test at the start of Phase D (Feature 4, Task 4.3).
+Note: `test/backend/search.test.ts` `vector search` and `cosine similarity` describe blocks reference the removed `embedding` column and will be rewritten in Phase E (Feature 6, Task 6.2).
 
 - [ ] **Step 6: Commit**
 
@@ -733,7 +735,9 @@ git commit -m "feat(embed): pluggable openai-compatible and local providers"
 
 (Ordering: implement Feature 5 Task 5.1 before this step so `buildEmbeddingText` exists.)
 
-- [ ] **Step 1: Rewrite failing test** `test/backend/embedding-worker.test.ts` — replace references to `embedding BLOB` with assertions that `vec_embeddings` now contains one row keyed by the email id.
+> **Note:** The existing `test/backend/embedding-worker.test.ts` references the old `embedding BLOB` column which was removed in Phase A (Feature 1). It was left in place with a `describe.skip` annotation. This task removes the skip and rewrites the test for the new vec0-based worker.
+
+- [ ] **Step 1: Rewrite failing test** `test/backend/embedding-worker.test.ts` — remove the `describe.skip`, replace all references to `embedding BLOB` with assertions that `vec_embeddings` now contains one row keyed by the email id.
 
 ```ts
 import { describe, test, expect } from "bun:test";
