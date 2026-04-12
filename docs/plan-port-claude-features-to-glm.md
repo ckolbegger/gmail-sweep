@@ -61,10 +61,11 @@ Phases must be executed in order because later phases depend on earlier state:
 6. **Phase F — Summarizer: backoff + status + on-demand endpoint + anchor.** Independent of Phases D/E but depends on Phase B types.
 7. **Phase G — Auth logout + older-than backfill.** Independent; can run in parallel with F.
 8. **Phase H — Web client.** Depends on Phase B (shared types) and should happen last so all backend endpoints it consumes exist.
+9. **Phase I — Nice-to-haves.** Implementation-level niceties (auth UX, config UX, credential overrides) that are not user-facing scope. Runs after all user-facing phases. Each item in this phase is independent and can be skipped individually.
 
 ---
 
-## Feature 1 — sqlite-vec `vec0` KNN (Phase A)
+## Feature 1 — sqlite-vec `vec0` KNN (Phase A) `[source: both]`
 
 **User-facing behavior:** Vector search uses an indexed ANN table instead of loading every candidate into JS and computing cosine by hand. Fixes the existing Float64/Float32 decode bug incidentally. No API shape change.
 
@@ -253,7 +254,7 @@ git commit -m "feat(db): migrate embeddings to sqlite-vec vec0 virtual table"
 
 ---
 
-## Feature 2 — Shared types module (Phase B)
+## Feature 2 — Shared types module (Phase B) `[source: claude]`
 
 **User-facing behavior:** None directly; prerequisite for config refactor, extraction strategies, and the web client consuming the same response types as the backend.
 
@@ -345,7 +346,7 @@ git commit -m "feat(shared): add shared type module for backend+web"
 
 ---
 
-## Feature 3 — `GET`/`POST /config` runtime endpoints + expanded config shape (Phase C)
+## Feature 3 — `GET`/`POST /config` runtime endpoints + expanded config shape (Phase C) `[source: both]`
 
 **User-facing behavior:** Client can fetch the current config and PATCH keys (llm, embedding, contentExtraction, sync) without restarting for runtime-mutable keys. TOML on disk is rewritten on POST.
 
@@ -613,7 +614,7 @@ git commit -m "feat(config): add GET/POST /config runtime endpoints"
 
 ---
 
-## Feature 4 — Configurable embedding provider: OpenAI-compatible + local (Phase D)
+## Feature 4 — Configurable embedding provider: OpenAI-compatible + local (Phase D) `[source: both]`
 
 **User-facing behavior:** `config.toml` controls which embedding backend runs. `local` loads BGE-M3 via `@huggingface/transformers` (first run downloads + caches); `openai-compatible` calls any OpenAI-shaped `/v1/embeddings` endpoint (including `baseUrl` override for local llama.cpp / vLLM). The hardcoded "mock" tag is removed; the model name is written to a new `embedding_strategies` metadata table (Phase 4b).
 
@@ -867,7 +868,7 @@ git commit -m "feat(sync): trigger embeddings after sync cycle"
 
 ---
 
-## Feature 5 — User-pluggable extraction strategy templates (Phase D)
+## Feature 5 — User-pluggable extraction strategy templates (Phase D) `[source: both]`
 
 **User-facing behavior:** Users edit `config.toml` → `[content_extraction.strategies.<name>]` with a `template` containing `{{subject}}`/`{{body_text}}` placeholders, then set `active_strategy`. The embedding worker applies the template when constructing the text to embed. Summarization is unaffected.
 
@@ -944,7 +945,7 @@ git commit -m "feat(embed): template-based extraction strategies"
 
 ---
 
-## Feature 6 — LLM-parsed natural-language search (Phase E)
+## Feature 6 — LLM-parsed natural-language search (Phase E) `[source: both]`
 
 **User-facing behavior:** User types `"emails from alice about the invoice last week"`. The LLM parses this into `{ filters: { sender: "alice", date_from: "2026-04-03", date_to: "2026-04-10" }, semanticQuery: "invoice" }`. The backend applies SQL filters for structured pieces and vec0 KNN for the semantic part. Query is combined with existing operator parser: if operators are present, they win; otherwise fall back to LLM parse.
 
@@ -1100,7 +1101,7 @@ git commit -m "feat(search): vec0 KNN + LLM natural-language query parsing"
 
 ---
 
-## Feature 7 — Summarizer: HTTP 429 backoff (Phase F)
+## Feature 7 — Summarizer: HTTP 429 backoff (Phase F) `[source: both]`
 
 **User-facing behavior:** When the LLM returns 429, the worker sleeps with exponential backoff (2s → 64s cap) instead of burning the queue and marking everything failed.
 
@@ -1189,7 +1190,7 @@ git commit -m "feat(summarizer): exponential backoff on HTTP 429"
 
 ---
 
-## Feature 8 — `GET /summarizer/status` (Phase F)
+## Feature 8 — `GET /summarizer/status` (Phase F) `[source: both]`
 
 **User-facing behavior:** Clients can poll `/summarizer/status` to see `{ status: "running"|"idle", processed, pending }`.
 
@@ -1239,7 +1240,7 @@ git commit -m "feat(summarizer): GET /summarizer/status endpoint"
 
 ---
 
-## Feature 9 — `anchor_unsummarized` inbox flag (Phase F)
+## Feature 9 — `anchor_unsummarized` inbox flag (Phase F) `[source: both]`
 
 **User-facing behavior:** `GET /emails?anchor_unsummarized=true` returns the page that contains the newest unsummarized email at the top — useful for watching the summarizer catch up.
 
@@ -1277,7 +1278,7 @@ git commit -m "feat(emails): anchor_unsummarized=true flag"
 
 ---
 
-## Feature 10 — On-demand `GET /emails/:id/summary` (Phase F)
+## Feature 10 — On-demand `GET /emails/:id/summary` (Phase F) `[source: both]`
 
 **User-facing behavior:** Client can force summarization of a single email synchronously and get the summary back.
 
@@ -1317,7 +1318,7 @@ git commit -m "feat(emails): on-demand GET /emails/:id/summary"
 
 ---
 
-## Feature 11 — `DELETE /auth/logout` (Phase G)
+## Feature 11 — `DELETE /auth/logout` (Phase G) `[source: both]`
 
 **User-facing behavior:** Logging out revokes the refresh token via Google's revocation endpoint and deletes the local token file. Subsequent `/auth/status` reports `authorized: false`.
 
@@ -1354,7 +1355,7 @@ git commit -m "feat(auth): DELETE /auth/logout endpoint"
 
 ---
 
-## Feature 12 — Older-than backfill as step 3 of the sync cycle (Phase G)
+## Feature 12 — Older-than backfill as step 3 of the sync cycle (Phase G) `[source: both]`
 
 **User-facing behavior:** After step 1 (newest) and step 2 (gap fill), if budget remains and there are no open gaps, fetch messages older than the current oldest known `date_received` to extend history backward.
 
@@ -1405,7 +1406,7 @@ git commit -m "feat(sync): older-than backfill as step 3 of sync cycle"
 
 ---
 
-## Feature 13 — Web client: React + Vite inbox / preview / search (Phase H)
+## Feature 13 — Web client: React + Vite inbox / preview / search (Phase H) `[source: both]`
 
 **User-facing behavior:** Browser UI served separately on a Vite dev server. Shows paginated inbox list, email preview with three modes (summary / text / HTML iframe), and a search bar that hits `POST /search` (or `GET /search?q=`). Actions: archive, delete. Talks to backend via `VITE_API_BASE_URL`.
 
@@ -1595,9 +1596,352 @@ git commit -m "feat(web): inbox list, preview, and search bar components"
 
 ---
 
-## Feature 14 — HTML-rendered email preview (sandboxed iframe)
+## Feature 14 — HTML-rendered email preview (sandboxed iframe) `[source: both]`
 
 Already covered by Feature 13, Task 13.3. No separate tasks. The sandbox attribute is `sandbox="allow-same-origin"` (no `allow-scripts`), matching claude's EmailPreview.tsx:83-87 and preventing arbitrary JS execution from email bodies.
+
+---
+
+## Feature 15 — Email list filters (sender/date/subject/pagination) + inbox-only default (Phase F/G) `[source: codex]`
+
+**User-facing behavior:** `GET /emails` accepts `?sender=`, `?date_from=` (unix seconds), `?date_to=`, `?subject=` (LIKE), `?limit=`, `?offset=`. Default listing is restricted to messages whose Gmail `labels` JSON array contains `INBOX` (in addition to the existing `removed_state IS NULL` check), matching claude's behavior — archived mail no longer shows in the default inbox view.
+
+**Why mainline (not nice-to-have):** The inbox-only default is a correctness gap (archived mail leaking into the inbox list is a user-visible defect), and the filters are user-facing list controls that the web client in Feature 13 will want.
+
+**Reference:** `claude/packages/backend/src/routes/emails.ts`, `claude/packages/backend/src/services/db.ts` `listEmails()` (`labels LIKE '%INBOX%'`), `claude/packages/shared/src/types.ts` `ListEmailsQuery`.
+
+**Files:**
+- Modify: `src/backend/routes/emails.ts` — parse new query params, forward to db layer.
+- Modify: `src/backend/db/` email list query builder — append `AND labels LIKE '%"INBOX"%'` to the default `where`; append optional `sender`, `subject`, `date_received >= ?`, `date_received <= ?`, plus `LIMIT ? OFFSET ?`.
+- Modify: `src/shared/types.ts` (from Feature 2) — extend `ListEmailsQuery` with the new fields.
+- Modify: `test/backend/routes/emails.test.ts`
+
+### Task 15.1: Inbox-only default filter
+
+- [ ] **Step 1: Failing test** — seed three emails: `e1 labels=["INBOX"]`, `e2 labels=["CATEGORY_PROMOTIONS"]` (no INBOX), `e3 labels=["INBOX","UNREAD"]`. Call `GET /emails` with no params. Expect `e1` and `e3` in result, `e2` absent.
+
+- [ ] **Step 2: Run test — FAIL** (currently `e2` appears because only `removed_state IS NULL` is checked).
+
+- [ ] **Step 3: Add INBOX filter to the default list query**
+
+```ts
+// src/backend/routes/emails.ts (or db query builder)
+const where: string[] = ["removed_state IS NULL", "labels LIKE '%\"INBOX\"%'"];
+```
+
+Use the JSON-quoted form `"INBOX"` to avoid matching substrings like `INBOXED`.
+
+- [ ] **Step 4: Run — PASS.**
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/backend/routes/emails.ts test/backend/routes/emails.test.ts
+git commit -m "fix(emails): restrict default /emails listing to INBOX label"
+```
+
+### Task 15.2: `sender`, `date_from`, `date_to`, `subject`, `limit`, `offset` params
+
+- [ ] **Step 1: Failing test** — seed five emails across two senders and a 10-day date range. Assert:
+  - `?sender=alice@x.com` → only alice rows.
+  - `?date_from=1700000000&date_to=1700500000` → only rows in that window.
+  - `?subject=invoice` → only rows whose subject contains `invoice` (case-insensitive).
+  - `?limit=2&offset=1` → exactly 2 rows starting from the second.
+
+- [ ] **Step 2: Run — FAIL.**
+
+- [ ] **Step 3: Extend the query builder**
+
+```ts
+const q = c.req.query();
+if (q.sender) { where.push("sender = ?"); params.push(q.sender); }
+if (q.date_from) { where.push("date_received >= ?"); params.push(Number(q.date_from)); }
+if (q.date_to) { where.push("date_received <= ?"); params.push(Number(q.date_to)); }
+if (q.subject) { where.push("subject LIKE ? COLLATE NOCASE"); params.push(`%${q.subject}%`); }
+const limit = Math.min(Number(q.limit ?? 100), 500);
+const offset = Number(q.offset ?? 0);
+// ... ORDER BY date_received DESC LIMIT ? OFFSET ?
+params.push(limit, offset);
+```
+
+- [ ] **Step 4: Extend `ListEmailsQuery` in `src/shared/types.ts`**
+
+```ts
+export interface ListEmailsQuery {
+  unread?: boolean;
+  label?: string;
+  anchor_unsummarized?: boolean;
+  sender?: string;
+  date_from?: number;
+  date_to?: number;
+  subject?: string;
+  limit?: number;
+  offset?: number;
+}
+```
+
+- [ ] **Step 5: Run — PASS.**
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/backend/routes/emails.ts src/shared/types.ts test/backend/routes/emails.test.ts
+git commit -m "feat(emails): sender/date/subject/pagination filters on /emails"
+```
+
+---
+
+## Feature 16 — Display search result scores in clients (Phase E/H) `[source: codex]`
+
+**User-facing behavior:** When a result comes from vector search, each row in the TUI and web client shows the relevance score (e.g. `0.82`) next to the subject. Keyword-only results omit the score.
+
+**Why mainline:** Trivial polish on top of Features 6 and 13 — vec0 KNN already returns a distance, which Feature 6 exposes as `score` on the `SearchResult` type.
+
+**Reference:** `claude/packages/terminal/src/views/search.ts`, `claude/packages/web/src/components/SearchBar.tsx`.
+
+**Files:**
+- Modify: `src/shared/types.ts` — ensure `SearchResult` has optional `score?: number`.
+- Modify: `src/tui/components/email-list.ts` (or wherever search result rows render) — append `score?.toFixed(2)` if present.
+- Modify: `web/src/components/SearchBar.tsx` and/or `EmailList.tsx` — show `score` badge.
+- Modify: `test/backend/services/search.test.ts` — assert `score` is populated for vector results.
+
+### Task 16.1: Score propagation end-to-end
+
+- [ ] **Step 1: Failing test** — in `test/tui/email-list-render.test.ts` (or wherever TUI rendering is tested) assert that when given `{ id, subject, score: 0.82 }`, the rendered row string contains `0.82`. For web: snapshot test `<EmailList>` with `score=0.82` contains `0.82`.
+
+- [ ] **Step 2: Run — FAIL.**
+
+- [ ] **Step 3: Thread `score` through**
+
+- Confirm `SearchService.vectorSearch()` (rewritten in Task 6.2) sets `score = 1 - distance` on each result. Already true in the Task 6.2 snippet — verify.
+- In `src/tui/components/email-list.ts`, if the row has a `score` field, format the row as `` `${subject} [${score.toFixed(2)}]` ``.
+- In `web/src/components/EmailList.tsx`, render `{email.score != null && <span className="score">{email.score.toFixed(2)}</span>}`.
+
+- [ ] **Step 4: Run — PASS.**
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/shared/types.ts src/tui/components/email-list.ts web/src/components/EmailList.tsx test/tui/email-list-render.test.ts
+git commit -m "feat(ui): display vector-search relevance scores in tui and web"
+```
+
+---
+
+## Feature 17 — Terminal command to load inbox anchored at newest unsummarized (Phase F) `[source: codex]`
+
+**User-facing behavior:** In the TUI, a keystroke (`L`, matching claude's terminal `L` binding) reloads the email list using `anchor_unsummarized=true`, so the view jumps to the oldest window that still contains a pending summary. Complements Feature 9 (backend) — without this, the flag is not reachable from glm's TUI.
+
+**Not covered elsewhere:** Feature 9 only adds the backend query flag. Plan previously had no terminal-side task. This adds it.
+
+**Reference:** `claude/packages/terminal/src/index.ts` (`l` / `L` keybinding), `claude/packages/terminal/src/api.ts`.
+
+**Files:**
+- Modify: `src/tui/api.ts` — `listEmails()` already takes a query object; add `anchor_unsummarized?: boolean`.
+- Modify: `src/tui/app.ts` — register `L` keypress handler that reloads with `{ anchor_unsummarized: true }`.
+- Modify: `test/tui/app-keybindings.test.ts` (create if absent).
+
+### Task 17.1
+
+- [ ] **Step 1: Failing test** — mock `api.listEmails`, simulate pressing `L`, assert it was called with `{ anchor_unsummarized: true }`.
+
+- [ ] **Step 2: Run — FAIL.**
+
+- [ ] **Step 3: Wire the keybinding**
+
+```ts
+// src/tui/app.ts — inside key setup
+screen.key(["L"], async () => {
+  const emails = await api.listEmails({ anchor_unsummarized: true });
+  this.setEmails(emails);
+  this.render();
+});
+```
+
+- [ ] **Step 4: Update `api.listEmails` signature in `src/tui/api.ts`** to forward the param as `?anchor_unsummarized=true`.
+
+- [ ] **Step 5: Run — PASS.**
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/tui/app.ts src/tui/api.ts test/tui/app-keybindings.test.ts
+git commit -m "feat(tui): L keybinding to anchor inbox at newest unsummarized"
+```
+
+---
+
+## Phase I — Nice-to-haves
+
+These are implementation-level niceties not in the original user-facing scope. Each is independent; skip any or all without affecting earlier phases.
+
+---
+
+## Feature 18 — Auth callback redirects to frontend with query params `[nice-to-have]` `[source: codex]`
+
+**User-facing behavior:** `GET /auth/callback?code=...` exchanges the code for tokens and then issues an HTTP 302 redirect to the frontend (e.g. `http://localhost:5173/?auth=ok` on success, `?auth=error&reason=...` on failure) instead of returning raw JSON. Matches claude's browser-flow UX.
+
+**Reference:** `claude/packages/backend/src/routes/auth.ts`.
+
+**Files:**
+- Modify: `src/backend/routes/auth.ts`
+- Modify: `src/backend/config.ts` — add `frontendUrl` (default `http://localhost:5173`).
+
+### Task 18.1
+
+- [ ] **Step 1: Failing test** — request `/auth/callback?code=FAKE`, expect status 302 and `Location` header starting with `http://localhost:5173/?auth=`.
+
+- [ ] **Step 2: Modify handler**
+
+```ts
+router.get("/auth/callback", async (c) => {
+  const code = c.req.query("code");
+  const frontend = config.frontendUrl ?? "http://localhost:5173";
+  if (!code) return c.redirect(`${frontend}/?auth=error&reason=missing_code`, 302);
+  try {
+    const tokens = await oauth.exchangeCode(code);
+    tokenStore.save(tokens);
+    return c.redirect(`${frontend}/?auth=ok`, 302);
+  } catch (e: any) {
+    return c.redirect(`${frontend}/?auth=error&reason=${encodeURIComponent(e.message)}`, 302);
+  }
+});
+```
+
+- [ ] **Step 3: Run, commit.**
+
+```bash
+git add src/backend/routes/auth.ts src/backend/config.ts test/backend/routes/auth.test.ts
+git commit -m "feat(auth): redirect /auth/callback to frontend with status query"
+```
+
+---
+
+## Feature 19 — `/auth/status` includes authenticated email address `[nice-to-have]` `[source: codex]`
+
+**User-facing behavior:** `GET /auth/status` returns `{ authorized: true, email: "alice@example.com" }` (or `{ authorized: false }`). The email is fetched from Gmail's `users.getProfile` on the first authorized status call and cached in memory for the process lifetime.
+
+**Reference:** `claude/packages/backend/src/routes/auth.ts`, `claude/packages/backend/src/services/gmail.ts` `getProfile()`.
+
+**Files:**
+- Modify: `src/backend/routes/auth.ts`
+- Modify: `src/backend/gmail/adapter.ts` — add `getProfile()` returning `{ emailAddress }`.
+
+### Task 19.1
+
+- [ ] **Step 1: Failing test** — stub `gmailAdapter.getProfile` to return `{ emailAddress: "alice@x" }`, call `/auth/status`, expect `{ authorized: true, email: "alice@x" }`.
+
+- [ ] **Step 2: Add adapter method**
+
+```ts
+// src/backend/gmail/adapter.ts
+async getProfile(): Promise<{ emailAddress: string }> {
+  const res = await this.api.get("/gmail/v1/users/me/profile");
+  return { emailAddress: res.emailAddress };
+}
+```
+
+- [ ] **Step 3: Modify `/auth/status` handler** to call `getProfile()` when authorized (wrap in try/catch; fall back to `{ authorized: true }` on error). Cache the result in a module-level variable keyed by refresh-token prefix.
+
+- [ ] **Step 4: Run, commit.**
+
+```bash
+git add src/backend/routes/auth.ts src/backend/gmail/adapter.ts test/backend/routes/auth.test.ts
+git commit -m "feat(auth): include authenticated email in /auth/status"
+```
+
+---
+
+## Feature 20 — Config file auto-created with defaults when missing `[nice-to-have]` `[source: codex]`
+
+**User-facing behavior:** On first run, if the TOML config file at the configured path does not exist, write a default TOML with sane empty scaffolding (empty LLM/embedding blocks, default frontendUrl, etc.) and continue startup instead of throwing.
+
+**Reference:** `claude/packages/backend/src/config.ts` — auto-create branch.
+
+**Files:**
+- Modify: `src/backend/config.ts`
+
+### Task 20.1
+
+- [ ] **Step 1: Failing test** — point the loader at a nonexistent path (`/tmp/glm-config-${Date.now()}.toml`), call `loadConfig(path)`, expect no throw, expect file now exists with default content parseable as TOML.
+
+- [ ] **Step 2: Modify `loadConfig`**
+
+```ts
+import { existsSync, writeFileSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+
+const DEFAULT_CONFIG_TOML = `# gmail-sweep config (auto-generated)
+frontendUrl = "http://localhost:5173"
+
+[llm]
+provider = ""
+apiKey = ""
+model = ""
+
+[embedding]
+provider = ""
+apiKey = ""
+model = ""
+`;
+
+export function loadConfig(path: string): Config {
+  if (!existsSync(path)) {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, DEFAULT_CONFIG_TOML);
+  }
+  // ... existing parse logic
+}
+```
+
+- [ ] **Step 3: Run, commit.**
+
+```bash
+git add src/backend/config.ts test/backend/config.test.ts
+git commit -m "feat(config): auto-create default TOML config when missing"
+```
+
+---
+
+## Feature 21 — Google credential environment variable overrides `[nice-to-have]` `[source: codex]`
+
+**User-facing behavior:** If `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and/or `GOOGLE_REDIRECT_URI` are set in the environment, they override the corresponding fields loaded from `config.toml`. Lets deployments inject credentials without editing the TOML.
+
+**Reference:** `claude/packages/backend/src/config.ts` — env override branch.
+
+**Files:**
+- Modify: `src/backend/config.ts`
+
+### Task 21.1
+
+- [ ] **Step 1: Failing test** — load config from a TOML with `googleClientId = "from-toml"`, then set `process.env.GOOGLE_CLIENT_ID = "from-env"` before calling `loadConfig`, expect returned config `.googleClientId === "from-env"`.
+
+- [ ] **Step 2: Modify `loadConfig`** (after parsing TOML, before returning):
+
+```ts
+if (process.env.GOOGLE_CLIENT_ID) config.googleClientId = process.env.GOOGLE_CLIENT_ID;
+if (process.env.GOOGLE_CLIENT_SECRET) config.googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+if (process.env.GOOGLE_REDIRECT_URI) config.googleRedirectUri = process.env.GOOGLE_REDIRECT_URI;
+```
+
+- [ ] **Step 3: Run, commit.**
+
+```bash
+git add src/backend/config.ts test/backend/config.test.ts
+git commit -m "feat(config): GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI env overrides"
+```
+
+---
+
+## Skipped items
+
+Items present in the comparison docs that are intentionally NOT ported, because glm already has equivalent functionality in a different shape (or the source worktree has a bug we shouldn't import):
+
+- **`/sync` synchronous-with-counts contract** `[source: codex]` — glm's `/sync` is fire-and-forget returning `202` with an in-memory route mutex; this is an equivalent feature in a different shape. Keeping glm's contract.
+- **Date-boundary gap tracking** `[source: both]` — glm uses pageToken-based gap tracking, which is an equivalent mechanism in a different shape. No port.
+- **Claude bug: trashed emails reappear on reload** `[source: codex]` — defect only affects claude (its `trashEmail()` leaves `INBOX` on the row). glm uses `removed_state IS NULL` and is not affected. No task.
+- **Claude bug: sync not restricted to `INBOX`** `[source: codex]` — glm already passes `labelIds: ["INBOX"]` to the Gmail API in `sync.ts` / `gap-manager.ts`. Nothing to port.
+- **`EmbeddingWorker` wiring gap** `[source: codex]` — glm has `EmbeddingWorker` / `vectorSearch` code but `src/backend/index.ts` never constructs them. Superseded by Feature 4 Task 4.4 and Feature 6 Task 6.2, which wire the new provider + vec0 search into `index.ts` / `server.ts`. Verify during those tasks that `index.ts` constructs and starts the worker.
 
 ---
 
@@ -1609,7 +1953,8 @@ The current broken decode in `src/backend/services/search.ts:107` is **deleted**
 
 ## Self-review checklist
 
-- **Spec coverage:** 14 features enumerated → Feature 1 (sqlite-vec), 2 (shared types), 3 (config endpoints), 4 (embed provider), 5 (extraction strategies), 6 (LLM search), 7 (429 backoff), 8 (summarizer status), 9 (anchor_unsummarized), 10 (on-demand summary), 11 (logout), 12 (older-than), 13 (web client), 14 (HTML iframe — folded into 13). All present.
+- **Spec coverage:** 21 features enumerated → Feature 1 (sqlite-vec), 2 (shared types), 3 (config endpoints), 4 (embed provider), 5 (extraction strategies), 6 (LLM search), 7 (429 backoff), 8 (summarizer status), 9 (anchor_unsummarized backend), 10 (on-demand summary), 11 (logout), 12 (older-than), 13 (web client), 14 (HTML iframe — folded into 13), 15 (email list filters + inbox-only default, codex), 16 (search scores in UI, codex), 17 (TUI anchor-unsummarized keybinding, codex), 18 (auth callback redirect, nice-to-have), 19 (auth status email, nice-to-have), 20 (config auto-create, nice-to-have), 21 (Google env overrides, nice-to-have). All present.
+- **Source tags:** every feature carries a `[source: claude|codex|both]` marker; nice-to-haves additionally carry `[nice-to-have]`.
 - **Bug note:** Float64/Float32 bug called out and tied to Phase A.
 - **Ordering:** Phases A→H explicitly ordered; Task 4.3 depends on Task 5.1 — called out.
 - **Stack differences:** Extension loading, TOML persistence, shared types, web location all addressed up front.
