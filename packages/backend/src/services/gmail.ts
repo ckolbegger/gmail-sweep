@@ -3,7 +3,7 @@ import { google } from 'googleapis';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import type { Email } from '@gmail-sweep/shared';
+import type { Email, GmailLabel } from '@gmail-sweep/shared';
 import { extractBodyText } from './content.js';
 
 interface GmailMessage {
@@ -69,11 +69,25 @@ export interface GmailService {
   isAuthenticated(): Promise<boolean>;
   getAuthenticatedEmail(): Promise<string | null>;
   revokeToken(): Promise<void>;
-  fetchMessagesSince(date: string | null, maxResults: number): Promise<Email[]>;
+  fetchMessagesSince(date: string | null, maxResults: number): Promise<{ emails: Email[]; historyId: string | null }>;
   fetchMessagesBefore(date: string, maxResults: number): Promise<Email[]>;
   fetchMessagesInRange(newerThan: string, olderThan: string, maxResults: number): Promise<Email[]>;
   archiveMessage(messageId: string): Promise<void>;
   deleteMessage(messageId: string): Promise<void>;
+  listLabels(): Promise<GmailLabel[]>;
+  listHistory(startHistoryId: string): Promise<{
+    history: Array<{
+      id: string;
+      messagesAdded?: Array<{ id: string; threadId: string }>;
+      messagesDeleted?: Array<{ id: string; threadId: string }>;
+    }>;
+    historyId: string;
+    expired?: boolean;
+  }>;
+  fetchMessagesById(id: string): Promise<Email | null>;
+  markRead(id: string): Promise<void>;
+  markUnread(id: string): Promise<void>;
+  getRawMessage(id: string): Promise<unknown | null>;
 }
 
 export function createGmailService(clientId: string, clientSecret: string, redirectUri: string): GmailService {
@@ -156,7 +170,8 @@ export function createGmailService(clientId: string, clientSecret: string, redir
         emails.push(messageToEmail(detail.data as GmailMessage));
       }
 
-      return emails;
+      const historyId = (listRes.data as any).historyId ? String((listRes.data as any).historyId) : null;
+      return { emails, historyId };
     },
 
     async fetchMessagesBefore(date, maxResults) {
@@ -210,6 +225,70 @@ export function createGmailService(clientId: string, clientSecret: string, redir
       await loadTokens();
       const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
       await gmail.users.messages.trash({ userId: 'me', id: messageId });
+    },
+
+    async listLabels() {
+      await loadTokens();
+      const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+      const res = await gmail.users.labels.list({ userId: 'me' });
+      return (res.data.labels ?? []).map(l => ({ id: l.id!, name: l.name! }));
+    },
+
+    async listHistory(startHistoryId) {
+      await loadTokens();
+      const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+      try {
+        const res = await gmail.users.history.list({
+          userId: 'me',
+          startHistoryId,
+          historyTypes: ['messageAdded', 'messageDeleted'],
+        });
+        const records = (res.data.history ?? []).map(h => ({
+          id: String(h.id),
+          messagesAdded: (h.messagesAdded ?? []).map(m => ({ id: m.message!.id!, threadId: m.message!.threadId! })),
+          messagesDeleted: (h.messagesDeleted ?? []).map(m => ({ id: m.message!.id!, threadId: m.message!.threadId! })),
+        }));
+        return { history: records, historyId: String(res.data.historyId ?? startHistoryId) };
+      } catch (err: any) {
+        if (err?.code === 404) return { history: [], historyId: startHistoryId, expired: true };
+        throw err;
+      }
+    },
+
+    async fetchMessagesById(id) {
+      await loadTokens();
+      const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+      try {
+        const detail = await gmail.users.messages.get({ userId: 'me', id, format: 'full' });
+        return messageToEmail(detail.data as GmailMessage);
+      } catch (err: any) {
+        if (err?.code === 404) return null;
+        throw err;
+      }
+    },
+
+    async markRead(id) {
+      await loadTokens();
+      const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+      await gmail.users.messages.modify({ userId: 'me', id, requestBody: { removeLabelIds: ['UNREAD'] } });
+    },
+
+    async markUnread(id) {
+      await loadTokens();
+      const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+      await gmail.users.messages.modify({ userId: 'me', id, requestBody: { addLabelIds: ['UNREAD'] } });
+    },
+
+    async getRawMessage(id) {
+      await loadTokens();
+      const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+      try {
+        const detail = await gmail.users.messages.get({ userId: 'me', id, format: 'full' });
+        return detail.data;
+      } catch (err: any) {
+        if (err?.code === 404) return null;
+        throw err;
+      }
     },
   };
 }

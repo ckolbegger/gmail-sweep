@@ -21,7 +21,7 @@ export async function runSyncCycle(
   const state = db.getSyncState();
 
   // Step 1: Fetch newest emails
-  const fetched = await gmail.fetchMessagesSince(state.newestDate, remaining);
+  const { emails: fetched, historyId: newHistoryId } = await gmail.fetchMessagesSince(state.newestDate, remaining);
 
   for (const email of fetched) {
     const existing = db.getEmail(email.id);
@@ -56,6 +56,9 @@ export async function runSyncCycle(
       totalSynced: state.totalSynced + newEmails,
     });
   }
+
+  // Persist historyId from full sync for future incremental syncs
+  if (newHistoryId) db.setLastHistoryId(newHistoryId);
 
   // Step 2: Fill gaps (oldest gap first — lowest newerBoundary)
   if (remaining > 0) {

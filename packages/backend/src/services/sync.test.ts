@@ -30,6 +30,12 @@ describe('sync service', () => {
       revokeToken: vi.fn(),
       archiveMessage: vi.fn(),
       deleteMessage: vi.fn(),
+      listLabels: vi.fn(),
+      listHistory: vi.fn(),
+      fetchMessagesById: vi.fn(),
+      markRead: vi.fn(),
+      markUnread: vi.fn(),
+      getRawMessage: vi.fn(),
     };
   });
 
@@ -38,7 +44,7 @@ describe('sync service', () => {
       makeEmail(`msg${i}`, `2026-03-0${i + 1}T00:00:00Z`)
     );
 
-    vi.mocked(mockGmail.fetchMessagesSince).mockResolvedValue(emails);
+    vi.mocked(mockGmail.fetchMessagesSince).mockResolvedValue({ emails, historyId: null });
 
     const result = await runSyncCycle(db, mockGmail, { batchSize: 10 });
 
@@ -53,7 +59,7 @@ describe('sync service', () => {
     for (const e of existing) db.upsertEmail(e);
     db.updateSyncState({ newestDate: '2026-02-01T00:00:00Z', oldestDate: '2026-02-01T00:00:00Z', totalSynced: 1 });
 
-    vi.mocked(mockGmail.fetchMessagesSince).mockResolvedValue([]); // no new emails
+    vi.mocked(mockGmail.fetchMessagesSince).mockResolvedValue({ emails: [], historyId: null }); // no new emails
     const olderEmails = [makeEmail('older1', '2026-01-15T00:00:00Z')];
     vi.mocked(mockGmail.fetchMessagesBefore).mockResolvedValue(olderEmails);
 
@@ -78,7 +84,7 @@ describe('sync service', () => {
       makeEmail('n1', '2026-03-22T00:00:00Z'),
       makeEmail('n2', '2026-03-23T00:00:00Z'),
     ];
-    vi.mocked(mockGmail.fetchMessagesSince).mockResolvedValue(newEmails);
+    vi.mocked(mockGmail.fetchMessagesSince).mockResolvedValue({ emails: newEmails, historyId: null });
     // Simulate Gmail indicating more messages exist via a second call returning empty
     vi.mocked(mockGmail.fetchMessagesBefore).mockResolvedValue([]);
 
@@ -96,7 +102,7 @@ describe('sync service', () => {
     db.updateSyncState({ newestDate: '2026-03-20T00:00:00Z', oldestDate: '2026-03-15T00:00:00Z', totalSynced: 2 });
     db.createGap({ newerBoundary: '2026-03-20T00:00:00Z', olderBoundary: '2026-03-15T00:00:00Z', estimatedCount: 3 });
 
-    vi.mocked(mockGmail.fetchMessagesSince).mockResolvedValue([]); // no new emails
+    vi.mocked(mockGmail.fetchMessagesSince).mockResolvedValue({ emails: [], historyId: null }); // no new emails
     const gapEmails = [
       makeEmail('g1', '2026-03-17T00:00:00Z'),
       makeEmail('g2', '2026-03-18T00:00:00Z'),
@@ -124,7 +130,7 @@ describe('runSyncWithEmbeddings', () => {
     } as unknown as DbHandle;
 
     const gmail = {
-      fetchMessagesSince: vi.fn().mockResolvedValue([]),
+      fetchMessagesSince: vi.fn().mockResolvedValue({ emails: [], historyId: null }),
       fetchMessagesBefore: vi.fn().mockResolvedValue([]),
       fetchMessagesInRange: vi.fn().mockResolvedValue([]),
     } as unknown as GmailService;
@@ -162,7 +168,7 @@ describe('runSyncWithEmbeddings', () => {
     } as unknown as DbHandle;
 
     const gmail = {
-      fetchMessagesSince: vi.fn().mockResolvedValue([]),
+      fetchMessagesSince: vi.fn().mockResolvedValue({ emails: [], historyId: null }),
       fetchMessagesBefore: vi.fn().mockResolvedValue([]),
       fetchMessagesInRange: vi.fn().mockResolvedValue([]),
     } as unknown as GmailService;

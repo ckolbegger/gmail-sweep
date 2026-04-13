@@ -108,6 +108,8 @@ export interface ExtractionStrategy {
   template: string;        // e.g. "Subject: {{subject}}\n\n{{body_text}}"
 }
 
+export interface GmailLabel { id: string; name: string; }
+
 export interface EmailListParams {
   sender?: string;
   date_from?: string;
