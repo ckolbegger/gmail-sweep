@@ -634,6 +634,111 @@ git add src/backend/config.ts src/backend/routes/config.ts src/backend/server.ts
 git commit -m "feat(config): add GET/POST /config runtime endpoints"
 ```
 
+### Task 3.3: POST /config returns 400 on malformed JSON `[adversarial-review fix]`
+
+- [x] **Step 1: Write failing test** — append to `test/backend/routes/config.test.ts`:
+
+```ts
+test("POST /config returns 400 on malformed JSON", async () => {
+  const { app } = setup();
+  const r = await app.request("/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "not-json{",
+  });
+  expect(r.status).toBe(400);
+  const body = await r.json();
+  expect(body.error).toMatch(/invalid json/i);
+});
+```
+
+- [x] **Step 2: Run — FAIL.**
+
+- [x] **Step 3: Fix** — wrap `c.req.json()` in try/catch in `src/backend/routes/config.ts`:
+
+```ts
+router.post("/config", async (c) => {
+  let patch: any;
+  try {
+    patch = await c.req.json();
+  } catch {
+    return c.json({ error: "Invalid JSON" }, 400);
+  }
+  // ... existing merge + save logic
+});
+```
+
+- [x] **Step 4: Run — PASS.**
+
+### Task 3.4: Test defaults when embedding/content_extraction sections missing `[adversarial-review fix]`
+
+- [x] **Step 1: Write failing test** — append to `test/backend/config.embedding.test.ts`:
+
+```ts
+test("uses defaults when embedding and content_extraction sections absent", () => {
+  const dir = mkdtempSync(join(tmpdir(), "gs-"));
+  const p = join(dir, "config.toml");
+  writeFileSync(p, `
+[auth]
+credentials_path = "/tmp/c"
+token_path = "/tmp/t"
+`);
+  const cfg = loadConfig(p);
+  expect(cfg.embedding.provider).toBe("local");
+  expect(cfg.embedding.model).toBe("BAAI/bge-m3");
+  expect(cfg.embedding.dimension).toBe(1024);
+  expect(cfg.content_extraction.active_strategy).toBe("default");
+  expect(cfg.content_extraction.strategies.default.template).toContain("{{subject}}");
+});
+```
+
+- [x] **Step 2: Run — verify PASS** (defaults already implemented; test documents the behavior).
+
+### Task 3.5: TOML round-trip test (save then reload) `[adversarial-review fix]`
+
+- [x] **Step 1: Write failing test** — append to `test/backend/config.embedding.test.ts`:
+
+```ts
+test("saveConfig → loadConfig round-trip preserves values", () => {
+  const dir = mkdtempSync(join(tmpdir(), "gs-"));
+  const p = join(dir, "config.toml");
+  writeFileSync(p, `
+[auth]
+credentials_path = "/tmp/c"
+token_path = "/tmp/t"
+[llm]
+provider = "openai"
+api_key = "sk-test"
+model = "gpt-4o-mini"
+base_url = "https://api.openai.com/v1"
+[embedding]
+provider = "openai-compatible"
+model = "text-embedding-3-small"
+dimension = 1536
+api_key = "emb-key"
+base_url = "http://localhost:8080/v1"
+[content_extraction]
+active_strategy = "custom"
+[content_extraction.strategies.custom]
+type = "template"
+template = "{{subject}} — {{body_text}}"
+`);
+  const original = loadConfig(p);
+  saveConfig(p, original);
+  const reloaded = loadConfig(p);
+
+  expect(reloaded.llm.api_key).toBe("sk-test");
+  expect(reloaded.embedding.provider).toBe("openai-compatible");
+  expect(reloaded.embedding.dimension).toBe(1536);
+  expect(reloaded.embedding.api_key).toBe("emb-key");
+  expect(reloaded.embedding.base_url).toBe("http://localhost:8080/v1");
+  expect(reloaded.content_extraction.active_strategy).toBe("custom");
+  expect(reloaded.content_extraction.strategies.custom.template).toBe("{{subject}} — {{body_text}}");
+});
+```
+
+- [x] **Step 2: Run — verify PASS** (or fix if round-trip breaks on optional fields).
+
 ---
 
 ## Feature 4 — Configurable embedding provider: OpenAI-compatible + local (Phase D — atomic semantic-search cutover) `[source: both]`

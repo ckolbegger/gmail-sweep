@@ -48,7 +48,7 @@ const gmailAdapter = oauth
 const llmProvider = createLlmProvider(config.llm);
 const summaryWorker = new SummaryWorker(db, llmProvider);
 
-const app = createApp({ db, oauth, tokenStore, gmailAdapter, llmProvider, summaryWorker });
+const app = createApp({ db, oauth, tokenStore, gmailAdapter, llmProvider, summaryWorker, configPath });
 
 // Start auto-poller
 if (gmailAdapter && config.sync.poll_interval_seconds > 0) {

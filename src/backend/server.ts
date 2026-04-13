@@ -4,6 +4,7 @@ import { createAuthRouter } from "./routes/auth";
 import { createEmailRouter } from "./routes/emails";
 import { createSyncRouter } from "./routes/sync";
 import { createSearchRouter } from "./routes/search";
+import { createConfigRouter } from "./routes/config";
 import { SyncService } from "./services/sync";
 import { SearchService } from "./services/search";
 import type { EmbeddingProvider } from "./services/search";
@@ -20,6 +21,7 @@ export interface ServerDeps {
   llmProvider?: any;
   embeddingProvider?: EmbeddingProvider;
   summaryWorker?: any;
+  configPath?: string;
 }
 
 export function createApp(deps: ServerDeps): Hono {
@@ -46,6 +48,10 @@ export function createApp(deps: ServerDeps): Hono {
       "/",
       createSyncRouter(syncService, deps.gmailAdapter, db, deps.summaryWorker)
     );
+  }
+
+  if (deps.configPath) {
+    app.route("/", createConfigRouter(deps.configPath));
   }
 
   return app;

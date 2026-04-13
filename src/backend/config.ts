@@ -1,7 +1,25 @@
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import TOML from "smol-toml";
+import TOML, { stringify as tomlStringify } from "smol-toml";
+
+export interface EmbeddingSectionCfg {
+  provider: "local" | "openai-compatible";
+  model: string;
+  dimension: number;
+  api_key?: string;
+  base_url?: string;
+}
+
+export interface ExtractionStrategyCfg {
+  type: "template";
+  template: string;
+}
+
+export interface ContentExtractionCfg {
+  active_strategy: string;
+  strategies: Record<string, ExtractionStrategyCfg>;
+}
 
 export interface Config {
   server: {
@@ -22,6 +40,8 @@ export interface Config {
     model: string;
     base_url: string;
   };
+  embedding: EmbeddingSectionCfg;
+  content_extraction: ContentExtractionCfg;
 }
 
 function expandPath(p: string): string {
@@ -43,6 +63,8 @@ export function loadConfig(configPath: string): Config {
   const auth = data.auth ?? {};
   const sync = data.sync ?? {};
   const llm = data.llm ?? {};
+  const embedding = data.embedding ?? {};
+  const content_extraction = data.content_extraction ?? {};
 
   // Required fields
   if (!auth.credentials_path) {
@@ -81,5 +103,25 @@ export function loadConfig(configPath: string): Config {
       model: String(llm.model ?? "gpt-4o-mini"),
       base_url: String(llm.base_url ?? "https://api.openai.com/v1"),
     },
+    embedding: {
+      provider: (embedding.provider as EmbeddingSectionCfg["provider"]) ?? "local",
+      model: String(embedding.model ?? "BAAI/bge-m3"),
+      dimension: Number(embedding.dimension ?? 1024),
+      ...(embedding.api_key ? { api_key: String(embedding.api_key) } : {}),
+      ...(embedding.base_url ? { base_url: String(embedding.base_url) } : {}),
+    },
+    content_extraction: {
+      active_strategy: String(content_extraction.active_strategy ?? "default"),
+      strategies: (content_extraction.strategies ?? {
+        default: {
+          type: "template" as const,
+          template: "Subject: {{subject}}\n\n{{body_text}}",
+        },
+      }) as Record<string, ExtractionStrategyCfg>,
+    },
   };
+}
+
+export function saveConfig(path: string, cfg: Config): void {
+  writeFileSync(path, tomlStringify(cfg as any));
 }
