@@ -505,6 +505,20 @@ describe("config routes", () => {
     expect(body.llm.api_key).toBe("new");
     expect(readFileSync(p, "utf8")).toContain('api_key = "new"');
   });
+
+  test("POST /config returns restart_required for immutable keys", async () => {
+    const { app, p } = setup();
+    const r = await app.request("/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ embedding: { dimension: 768 } }),
+    });
+    expect(r.status).toBe(200);
+    const body = await r.json();
+    expect(body.restart_required).toBe(true);
+    // File is persisted even for immutable keys (takes effect on restart)
+    expect(readFileSync(p, "utf8")).toContain("768");
+  });
 });
 ```
 
@@ -523,11 +537,22 @@ export function saveConfig(path: string, cfg: Config): void {
 
 - [ ] **Step 4: Create `src/backend/routes/config.ts`**
 
+Keys that require a restart to take effect (constructed once at boot, never reloaded):
+
+```ts
+const IMMUTABLE_KEYS = [
+  "embedding.dimension",
+  "embedding.provider",
+  "embedding.model",
+  "server.host",
+  "server.port",
+];
+```
+
 ```ts
 import { Hono } from "hono";
 import { loadConfig, saveConfig } from "../config";
 
-// Deep merge — later source overrides earlier, objects merge recursively.
 function deepMerge<T>(base: T, patch: any): T {
   if (typeof base !== "object" || base === null) return patch ?? base;
   if (typeof patch !== "object" || patch === null) return base;
@@ -536,6 +561,19 @@ function deepMerge<T>(base: T, patch: any): T {
     out[k] = deepMerge((base as any)[k], patch[k]);
   }
   return out as T;
+}
+
+function touchedImmutableKeys(patch: any, prefix = ""): string[] {
+  const result: string[] = [];
+  for (const [k, v] of Object.entries(patch)) {
+    const path = prefix ? `${prefix}.${k}` : k;
+    if (typeof v === "object" && v !== null && !Array.isArray(v)) {
+      result.push(...touchedImmutableKeys(v, path));
+    } else {
+      if (IMMUTABLE_KEYS.includes(path)) result.push(path);
+    }
+  }
+  return result;
 }
 
 export function createConfigRouter(configPath: string) {
@@ -550,7 +588,12 @@ export function createConfigRouter(configPath: string) {
     const current = loadConfig(configPath);
     const merged = deepMerge(current, patch);
     saveConfig(configPath, merged);
-    return c.json(merged);
+    const touched = touchedImmutableKeys(patch);
+    return c.json({
+      ...merged,
+      restart_required: touched.length > 0,
+      restart_required_keys: touched,
+    });
   });
 
   return router;
@@ -595,7 +638,7 @@ git commit -m "feat(config): add GET/POST /config runtime endpoints"
 
 ## Feature 4 — Configurable embedding provider: OpenAI-compatible + local (Phase D — atomic semantic-search cutover) `[source: both]`
 
-**This phase is part of the atomic Phase D cutover.** Features 4, 5, and 6 must land together in a single commit (or tightly-coupled commit sequence) so that no intermediate state leaves embedding/search code paths broken. See the Phase D note below for the full scope.
+**This phase is part of the atomic Phase D cutover.** Features 4, 5, and 6 must land together in a single commit (or tightly-coupled commit sequence) so that no intermediate state leaves embedding/search code paths broken. Specifically: Task 4.3 (worker rewrite) and Task 6.2 (search rewrite) must be wired into production in the same commit as Task 4.4 (sync trigger). The worker writes only `vec_embeddings`; search reads only `vec_embeddings`. If either switches before the other, runtime behavior is broken. See the ordering constraint on Task 4.4 for the exact sequence.
 
 **User-facing behavior:** `config.toml` controls which embedding backend runs. `local` loads BGE-M3 via `@huggingface/transformers` (first run downloads + caches); `openai-compatible` calls any OpenAI-shaped `/v1/embeddings` endpoint (including `baseUrl` override for local llama.cpp / vLLM). The hardcoded "mock" tag is removed; the model name is written to a new `embedding_strategies` metadata table (Phase 4b).
 
@@ -839,14 +882,17 @@ git add src/backend/services/embedding-worker.ts src/backend/index.ts test/backe
 git commit -m "feat(embed): rewire worker to use pluggable provider and vec0"
 ```
 
-### Task 4.4: Trigger embeddings after sync
+### Task 4.4: Wire embedding worker + search cutover into sync (MUST land after Task 6.2)
+
+> **Ordering constraint:** This task must land in the same commit as (or immediately after) Task 6.2. The embedding worker writes only to `vec_embeddings` (Task 4.3), and search reads only from `vec_embeddings` (Task 6.2). Wiring the worker into sync before search is switched would mean newly synced emails get embeddings that the runtime search cannot find. Both must switch together.
 
 - [ ] **Step 1:** In `src/backend/routes/sync.ts`, extend `createSyncRouter` to accept an optional `embeddingWorker` and run `embeddingWorker.processPending()` in the same background chain that currently runs `summaryWorker.processPending()`.
-- [ ] **Step 2: Commit**
+- [ ] **Step 2:** Ensure `SearchService` is also constructed with the vec0-based `vectorSearch` (from Task 6.2) in `server.ts` in this same commit.
+- [ ] **Step 3: Single commit for the full cutover**
 
 ```bash
-git add src/backend/routes/sync.ts src/backend/server.ts
-git commit -m "feat(sync): trigger embeddings after sync cycle"
+git add src/backend/services/embedding-worker.ts src/backend/services/search.ts src/backend/routes/sync.ts src/backend/server.ts src/backend/index.ts test/backend/
+git commit -m "feat(search): atomic cutover — worker writes vec0, search reads vec0, wired into sync"
 ```
 
 ---
