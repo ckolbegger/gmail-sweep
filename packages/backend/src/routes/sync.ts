@@ -4,7 +4,7 @@ import type { GmailService } from '../services/gmail.js';
 import type { EmbedService } from '../services/embed.js';
 import type { AppConfig } from '@gmail-sweep/shared';
 import type { SummarizerWorker } from '../services/summarizer.js';
-import { runSyncWithEmbeddings } from '../services/sync.js';
+import { runSyncWithEmbeddings, runIncrementalSync, fillSingleGap } from '../services/sync.js';
 
 export async function syncRoutes(
   app: FastifyInstance,
@@ -37,5 +37,27 @@ export async function syncRoutes(
     const gaps = db.listGaps();
     const totalMissing = gaps.reduce((sum, g) => sum + g.estimatedCount, 0);
     return { gaps, totalMissing };
+  });
+
+  app.post('/sync/incremental', async () => {
+    const result = await runIncrementalSync(db, gmail);
+    if (result.mode === 'incremental') summarizer.trigger();
+    return result;
+  });
+
+  app.post('/sync/gaps/:id/fill', async (request, reply) => {
+    const id = Number((request.params as any).id);
+    const gap = db.getGap(id);
+    if (!gap) return reply.code(404).send({ error: 'Gap not found' });
+    const result = await fillSingleGap(db, gmail, gap, defaultBatchSize);
+    return result;
+  });
+
+  app.delete('/sync/gaps/:id', async (request, reply) => {
+    const id = Number((request.params as any).id);
+    const gap = db.getGap(id);
+    if (!gap) return reply.code(404).send({ error: 'Gap not found' });
+    db.deleteGap(id);
+    return { ok: true };
   });
 }

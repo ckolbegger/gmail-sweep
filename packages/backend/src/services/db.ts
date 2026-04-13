@@ -23,6 +23,8 @@ export interface DbHandle {
   countEmailsWithoutSummary(): number;
   markEmailRemoved(id: string, state: 'archived' | 'deleted'): void;
   clearEmailRemoved(id: string): void;
+  deleteEmail(id: string): void;
+  getGap(id: number): Gap | null;
   setReadState(id: string, read: boolean): void;
   close(): void;
 }
@@ -355,6 +357,21 @@ export function createDb(dbPath: string): DbHandle {
 
     clearEmailRemoved(id) {
       db.prepare('UPDATE emails SET removed_state = NULL WHERE id = ?').run(id);
+    },
+
+    deleteEmail(id) {
+      db.prepare('DELETE FROM emails WHERE id = ?').run(id);
+    },
+
+    getGap(id) {
+      const row = db.prepare('SELECT * FROM sync_gaps WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+      if (!row) return null;
+      return {
+        id: row.id as number,
+        newerBoundary: row.newer_boundary as string,
+        olderBoundary: row.older_boundary as string,
+        estimatedCount: row.estimated_count as number,
+      };
     },
 
     setReadState(id, read) {

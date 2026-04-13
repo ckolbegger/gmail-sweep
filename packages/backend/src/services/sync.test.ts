@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createDb, type DbHandle } from './db.js';
-import { runSyncCycle, runSyncWithEmbeddings } from './sync.js';
+import { runSyncCycle, runSyncWithEmbeddings, runIncrementalSync } from './sync.js';
 import type { GmailService } from './gmail.js';
 import type { Email, AppConfig } from '@gmail-sweep/shared';
 import type { EmbedService } from './embed.js';
@@ -115,6 +115,37 @@ describe('sync service', () => {
 
     expect(result.gapsFilled).toBeGreaterThan(0);
     expect(db.listGaps()).toHaveLength(0);
+  });
+});
+
+describe('runIncrementalSync', () => {
+  it('runIncrementalSync applies messagesAdded and messagesDeleted', async () => {
+    const db = createDb(':memory:');
+    db.upsertEmail({ id: 'old', threadId: 't', subject: 's', from: 'a', date: '2025-01-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null, labels: ['INBOX'], summary: null });
+    db.setLastHistoryId('100');
+
+    const gmail = {
+      listHistory: vi.fn().mockResolvedValue({
+        history: [
+          { id: '101', messagesAdded: [{ id: 'new1' }], messagesDeleted: [] },
+          { id: '102', messagesAdded: [], messagesDeleted: [{ id: 'old' }] },
+        ],
+        historyId: '102',
+      }),
+      fetchMessagesById: vi.fn().mockResolvedValue({
+        id: 'new1', threadId: 'tn', subject: 'hi', from: 'b', date: '2025-02-01T00:00:00Z',
+        snippet: '', bodyText: '', bodyHtml: null, labels: ['INBOX'], summary: null,
+      }),
+    } as unknown as GmailService;
+
+    const result = await runIncrementalSync(db, gmail);
+    expect(result.newEmails).toBe(1);
+    expect(result.deleted).toBe(1);
+    expect(db.getEmail('old')?.removedState).toBe('deleted'); // soft-deleted, row still exists
+    expect(db.listEmails({}).find(e => e.id === 'old')).toBeUndefined(); // hidden from list
+    expect(db.getEmail('new1')).not.toBeNull();
+    expect(db.getSyncState().lastHistoryId).toBe('102');
+    db.close();
   });
 });
 

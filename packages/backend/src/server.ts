@@ -8,6 +8,8 @@ import { createAiService } from './services/ai.js';
 import { createEmbedService } from './services/embed.js';
 import { createSearchService } from './services/search.js';
 import { createSummarizerWorker } from './services/summarizer.js';
+import { createAutoPoller } from './services/auto-poller.js';
+import { runSyncWithEmbeddings } from './services/sync.js';
 import { authRoutes } from './routes/auth.js';
 import { emailRoutes } from './routes/emails.js';
 import { syncRoutes } from './routes/sync.js';
@@ -43,6 +45,18 @@ export async function buildServer(options?: { dbPath?: string }) {
   await app.register(configRoutes);
   await app.register(summarizerRoutes, { summarizer });
   await app.register(labelsRoutes, { gmail });
+
+  const poller = createAutoPoller({
+    intervalMs: config.sync.autoPollIntervalMs ?? 0,
+    isAuthorized: () => gmail.isAuthenticated(),
+    onSync: async () => {
+      await runSyncWithEmbeddings(db, gmail, embed, config, { batchSize: config.sync.defaultBatchSize });
+      summarizer.trigger();
+    },
+    logger: app.log,
+  });
+  poller.start();
+  app.addHook('onClose', async () => poller.stop());
 
   return app;
 }

@@ -40,6 +40,8 @@ export interface SyncResult {
   gapsFilled: number;
   olderFetched: number;
   remainingGaps: Gap[];
+  deleted?: number;
+  mode?: 'full' | 'incremental';
 }
 
 export interface ParsedQuery {
@@ -93,6 +95,7 @@ export interface AppConfig {
   embedding: EmbeddingConfig;
   sync: {
     defaultBatchSize: number;
+    autoPollIntervalMs?: number;
   };
   contentExtraction: {
     activeStrategy: string;

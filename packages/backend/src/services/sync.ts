@@ -1,6 +1,6 @@
 import type { DbHandle } from './db.js';
 import type { GmailService } from './gmail.js';
-import type { SyncResult, AppConfig } from '@gmail-sweep/shared';
+import type { SyncResult, AppConfig, Gap } from '@gmail-sweep/shared';
 import type { EmbedService } from './embed.js';
 import { generatePendingEmbeddings } from './embeddings.js';
 
@@ -66,37 +66,9 @@ export async function runSyncCycle(
 
     for (const gap of gaps) {
       if (remaining <= 0) break;
-
-      const gapEmails = await gmail.fetchMessagesInRange(
-        gap.newerBoundary,
-        gap.olderBoundary,
-        remaining
-      );
-
-      for (const email of gapEmails) {
-        if (!db.getEmail(email.id)) {
-          db.upsertEmail(email);
-          gapsFilled++;
-        }
-      }
-      remaining -= gapEmails.length;
-
-      if (gapEmails.length === 0) {
-        // Gap fully filled (or empty) — remove it
-        db.deleteGap(gap.id);
-      } else if (gapEmails.length < remaining + gapEmails.length) {
-        // Partially filled — shrink the gap boundary
-        const oldest = [...gapEmails].sort((a, b) => a.date.localeCompare(b.date))[0];
-        if (oldest) {
-          db.updateGapBoundary(gap.id, {
-            olderBoundary: oldest.date,
-            estimatedCount: Math.max(0, gap.estimatedCount - gapEmails.length),
-          });
-        }
-        db.deleteGap(gap.id); // simple: remove when we've processed it once fully within budget
-      } else {
-        db.deleteGap(gap.id);
-      }
+      const { fetched: gapFetched } = await fillSingleGap(db, gmail, gap, remaining);
+      gapsFilled += gapFetched;
+      remaining -= gapFetched;
     }
   }
 
@@ -129,6 +101,76 @@ export async function runSyncCycle(
     olderFetched,
     remainingGaps: db.listGaps(),
   };
+}
+
+export async function runIncrementalSync(
+  db: DbHandle,
+  gmail: GmailService
+): Promise<SyncResult & { deleted: number; mode: 'incremental' | 'full' }> {
+  const { lastHistoryId } = db.getSyncState();
+  if (!lastHistoryId) {
+    return { fetched: 0, newEmails: 0, gapsFilled: 0, olderFetched: 0, deleted: 0, remainingGaps: db.listGaps(), mode: 'full' };
+  }
+
+  const hist = await gmail.listHistory(lastHistoryId);
+  if (hist.expired) {
+    db.setLastHistoryId(null);
+    return { fetched: 0, newEmails: 0, gapsFilled: 0, olderFetched: 0, deleted: 0, remainingGaps: db.listGaps(), mode: 'full' };
+  }
+
+  let newEmails = 0;
+  let deleted = 0;
+
+  for (const record of hist.history) {
+    for (const m of record.messagesAdded ?? []) {
+      if (db.getEmail(m.id)) continue;
+      const full = await gmail.fetchMessagesById(m.id);
+      if (full) { db.upsertEmail(full); newEmails++; }
+    }
+    for (const m of record.messagesDeleted ?? []) {
+      db.markEmailRemoved(m.id, 'deleted');
+      deleted++;
+    }
+  }
+
+  db.setLastHistoryId(hist.historyId);
+  const state = db.getSyncState();
+  db.updateSyncState({
+    newestDate: state.newestDate ?? '',
+    oldestDate: state.oldestDate ?? '',
+    totalSynced: state.totalSynced + newEmails,
+  });
+
+  return {
+    fetched: newEmails,
+    newEmails,
+    gapsFilled: 0,
+    olderFetched: 0,
+    deleted,
+    remainingGaps: db.listGaps(),
+    mode: 'incremental',
+  };
+}
+
+export async function fillSingleGap(
+  db: DbHandle,
+  gmail: GmailService,
+  gap: Gap,
+  batchSize: number
+): Promise<{ fetched: number; remaining: Gap | null }> {
+  const emails = await gmail.fetchMessagesInRange(gap.newerBoundary, gap.olderBoundary, batchSize);
+  let fetched = 0;
+  for (const e of emails) {
+    if (!db.getEmail(e.id)) { db.upsertEmail(e); fetched++; }
+  }
+  if (emails.length < batchSize) {
+    db.deleteGap(gap.id);
+    return { fetched, remaining: null };
+  }
+  const oldest = [...emails].sort((a, b) => a.date.localeCompare(b.date))[0]!;
+  db.updateGapBoundary(gap.id, { olderBoundary: oldest.date, estimatedCount: Math.max(0, gap.estimatedCount - fetched) });
+  const updated = db.getGap(gap.id);
+  return { fetched, remaining: updated };
 }
 
 const EMBEDDING_BATCH_SIZE = 50;
