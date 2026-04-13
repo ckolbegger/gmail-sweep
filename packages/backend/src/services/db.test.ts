@@ -216,6 +216,53 @@ describe('database service', () => {
     });
   });
 
+  describe('trashEmail INBOX bug fix', () => {
+    it('trashEmail removes INBOX so the email no longer appears in listEmails', () => {
+      const db = createDb(':memory:');
+      db.upsertEmail({
+        id: 'bug1', threadId: 't', subject: 's', from: 'x',
+        date: '2025-01-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: ['INBOX', 'UNREAD'], summary: null,
+      });
+      expect(db.listEmails({}).map(e => e.id)).toContain('bug1');
+      db.trashEmail('bug1');
+      expect(db.listEmails({}).map(e => e.id)).not.toContain('bug1');
+      const row = db.getEmail('bug1');
+      expect(row?.labels).toContain('TRASH');
+      expect(row?.labels).not.toContain('INBOX');
+      db.close();
+    });
+  });
+
+  describe('F9: unread filter on listEmails', () => {
+    it('listEmails filters by unread label presence', () => {
+      const db = createDb(':memory:');
+      db.upsertEmail({ id: 'u', threadId: 't1', subject: 's', from: 'x',
+        date: '2025-01-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: ['INBOX', 'UNREAD'], summary: null });
+      db.upsertEmail({ id: 'r', threadId: 't2', subject: 's', from: 'x',
+        date: '2025-01-02T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: ['INBOX'], summary: null });
+      expect(db.listEmails({ unread: true }).map(e => e.id)).toEqual(['u']);
+      expect(db.listEmails({ unread: false }).map(e => e.id)).toEqual(['r']);
+      db.close();
+    });
+  });
+
+  describe('F11: label filter on listEmails', () => {
+    it('listEmails filters by label id', () => {
+      const db = createDb(':memory:');
+      db.upsertEmail({ id: '1', threadId: 't1', subject: 's', from: 'x',
+        date: '2025-01-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: ['INBOX', 'Label_1'], summary: null });
+      db.upsertEmail({ id: '2', threadId: 't2', subject: 's', from: 'x',
+        date: '2025-01-02T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: ['INBOX'], summary: null });
+      expect(db.listEmails({ label: 'Label_1' }).map(e => e.id)).toEqual(['1']);
+      db.close();
+    });
+  });
+
   describe('removed_state soft-delete', () => {
     it('markEmailRemoved hides email from listEmails until cleared', () => {
       const db = createDb(':memory:');

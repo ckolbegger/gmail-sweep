@@ -23,6 +23,7 @@ export interface DbHandle {
   countEmailsWithoutSummary(): number;
   markEmailRemoved(id: string, state: 'archived' | 'deleted'): void;
   clearEmailRemoved(id: string): void;
+  setReadState(id: string, read: boolean): void;
   close(): void;
 }
 
@@ -210,6 +211,12 @@ export function createDb(dbPath: string): DbHandle {
         conditions.push("subject LIKE ?");
         bindings.push(`%${params.subject}%`);
       }
+      if (params.unread === true)  conditions.push('labels LIKE \'%"UNREAD"%\'');
+      if (params.unread === false) conditions.push('labels NOT LIKE \'%"UNREAD"%\'');
+      if (params.label) {
+        conditions.push("labels LIKE ?");
+        bindings.push(`%"${params.label}"%`);
+      }
 
       const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
       const limit = params.limit ?? 50;
@@ -237,7 +244,7 @@ export function createDb(dbPath: string): DbHandle {
     trashEmail(id) {
       const row = db.prepare('SELECT labels FROM emails WHERE id = ?').get(id) as { labels: string } | undefined;
       if (!row) return;
-      const labels = JSON.parse(row.labels) as string[];
+      const labels = (JSON.parse(row.labels) as string[]).filter(l => l !== 'INBOX');
       if (!labels.includes('TRASH')) labels.push('TRASH');
       db.prepare('UPDATE emails SET labels = ? WHERE id = ?').run(JSON.stringify(labels), id);
     },
@@ -348,6 +355,14 @@ export function createDb(dbPath: string): DbHandle {
 
     clearEmailRemoved(id) {
       db.prepare('UPDATE emails SET removed_state = NULL WHERE id = ?').run(id);
+    },
+
+    setReadState(id, read) {
+      const row = db.prepare('SELECT labels FROM emails WHERE id = ?').get(id) as { labels: string } | undefined;
+      if (!row) return;
+      const labels = (JSON.parse(row.labels) as string[]).filter(l => l !== 'UNREAD');
+      if (!read) labels.push('UNREAD');
+      db.prepare('UPDATE emails SET labels = ? WHERE id = ?').run(JSON.stringify(labels), id);
     },
 
     close() {

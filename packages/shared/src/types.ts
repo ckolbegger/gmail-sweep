@@ -118,4 +118,6 @@ export interface EmailListParams {
   limit?: number;
   offset?: number;
   anchor_unsummarized?: boolean;   // if true, backend anchors results at newest unsummarized email
+  unread?: boolean;
+  label?: string;
 }
