@@ -143,6 +143,18 @@ describe('database service', () => {
     });
   });
 
+  describe('lastHistoryId persistence', () => {
+    it('persists and reads lastHistoryId', () => {
+      const db = createDb(':memory:');
+      expect(db.getSyncState().lastHistoryId).toBeNull();
+      db.setLastHistoryId('12345');
+      expect(db.getSyncState().lastHistoryId).toBe('12345');
+      db.setLastHistoryId(null);
+      expect(db.getSyncState().lastHistoryId).toBeNull();
+      db.close();
+    });
+  });
+
   describe('gap management', () => {
     it('creates and lists gaps', () => {
       db.createGap({ newerBoundary: '2026-03-20T00:00:00Z', olderBoundary: '2026-03-15T00:00:00Z', estimatedCount: 200 });
@@ -201,6 +213,19 @@ describe('database service', () => {
       expect(db.countEmailsWithoutSummary()).toBe(2);
       db.updateSummary('a', { description: 'd', actionItems: [], keyPoints: [] });
       expect(db.countEmailsWithoutSummary()).toBe(1);
+    });
+  });
+
+  describe('removed_state soft-delete', () => {
+    it('markEmailRemoved hides email from listEmails until cleared', () => {
+      const db = createDb(':memory:');
+      db.upsertEmail({ id: 'a', threadId: 't', subject: 's', from: 'x', date: '2025-01-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null, labels: ['INBOX'], summary: null });
+      expect(db.listEmails({}).length).toBe(1);
+      db.markEmailRemoved('a', 'archived');
+      expect(db.listEmails({}).length).toBe(0);
+      db.clearEmailRemoved('a');
+      expect(db.listEmails({}).length).toBe(1);
+      db.close();
     });
   });
 

@@ -79,6 +79,19 @@ Execute features in this order. Each phase ends with passing tests and a commit.
 - **Phase F (terminal):** F15 (detail-panel toggle) `[source: both]`.
 - **Phase G (nice-to-haves):** F17 Gmail API retry/backoff `[source: codex]`, F18 verbose LLM logging `[source: codex]`, F19 sync limited to `INBOX` at Gmail API `[source: codex]`, F20 periodic summarizer timer `[source: codex]`. All marked `[nice-to-have]`.
 
+**Phase-end verification rule:** After Phase A, and after any later phase that modifies `packages/shared/src/types.ts`, run a workspace-wide compatibility check from the repo root:
+
+```bash
+npm run build
+```
+
+If the full build is too slow or noisy during iteration, use this fallback cross-package type check before moving on:
+
+```bash
+cd packages/web && npx tsc --noEmit
+cd ../terminal && npx tsc --noEmit
+```
+
 ---
 
 ## Feature F1: `historyId` persistence in sync state `[source: both]`
@@ -168,7 +181,11 @@ export interface SyncStatus {
 cd packages/backend && npx vitest run src/services/db.test.ts
 ```
 
-Expected: PASS. Also run `packages/shared` build to check type integrity.
+Expected: PASS. Then run the Phase A cross-package verification from the repo root:
+
+```bash
+npm run build
+```
 
 - [ ] **Step 5: Commit**
 
@@ -293,6 +310,22 @@ Update the return type:
 ```ts
 fetchMessagesSince(date: string | null, maxResults: number): Promise<{ emails: Email[]; historyId: string | null }>;
 ```
+
+Also update all existing `sync.test.ts` mock callsites that currently do:
+
+```ts
+vi.mocked(mockGmail.fetchMessagesSince).mockResolvedValue(emails);
+```
+
+to:
+
+```ts
+vi.mocked(mockGmail.fetchMessagesSince).mockResolvedValue({ emails, historyId: null });
+```
+
+This must be done for every existing callsite in `packages/backend/src/services/sync.test.ts`, not just the new incremental-sync test.
+
+**Atomic edit note:** Steps 3 and 4 create a temporary compile gap if done separately. Change the `fetchMessagesSince` interface/return type and the `runSyncCycle` callsites in one edit session before running tests.
 
 - [ ] **Step 4: Implement `runIncrementalSync` in `sync.ts`**
 
@@ -474,8 +507,11 @@ export function createAutoPoller(opts: AutoPollerOptions): AutoPoller {
 
 - [ ] **Step 4: Wire into server.ts**
 
+Note: `server.ts` must import `runSyncWithEmbeddings` explicitly when wiring the poller callback; do not assume the existing `syncRoutes` closure import is sufficient.
+
 ```ts
 import { createAutoPoller } from './services/auto-poller.js';
+import { runSyncWithEmbeddings } from './services/sync.js';
 // ...
 const poller = createAutoPoller({
   intervalMs: config.sync.autoPollIntervalMs ?? 0,
@@ -526,6 +562,8 @@ Original F4 content below (do not execute):
 
 - [ ] **Step 1: Write failing test**
 
+DO NOT EXECUTE: this skipped feature is retained for historical context only.
+
 In `packages/backend/src/routes/sync.test.ts`:
 
 ```ts
@@ -544,6 +582,8 @@ it('returns syncInProgress=false initially and rejects concurrent /sync with 409
 
 - [ ] **Step 2: Run and verify fail**
 
+DO NOT EXECUTE: this skipped feature is retained for historical context only.
+
 ```
 cd packages/backend && npx vitest run src/routes/sync.test.ts -t syncInProgress
 ```
@@ -551,6 +591,8 @@ cd packages/backend && npx vitest run src/routes/sync.test.ts -t syncInProgress
 Expected: FAIL.
 
 - [ ] **Step 3: Implement**
+
+DO NOT EXECUTE: this skipped feature is retained for historical context only.
 
 In `packages/backend/src/routes/sync.ts`, capture flag in closure:
 
@@ -583,6 +625,8 @@ export async function syncRoutes(app, options) {
 Add to `SyncStatus` in shared types: `syncInProgress: boolean`.
 
 - [ ] **Step 4: Verify pass, then commit**
+
+DO NOT EXECUTE: this skipped feature is retained for historical context only.
 
 ```
 cd packages/backend && npx vitest run src/routes/sync.test.ts
@@ -1093,7 +1137,7 @@ This gives users deterministic control when they care, and leaves the LLM path f
 - Create: `packages/backend/src/services/search-parser.test.ts`
 - Modify: `packages/backend/src/services/search.ts` — gate LLM call on operator absence.
 - Modify: `packages/backend/src/services/db.ts` — `listEmails` needs to support `starred`, and `has_actions` filters (see below).
-- Modify: `packages/shared/src/types.ts` — extend `EmailListParams` with `starred?: boolean; hasActions?: boolean`.
+- Modify: `packages/shared/src/types.ts` — extend `EmailListParams` with `starred?: boolean; hasActions?: boolean`, and extend `ParsedQuery.filters` to include `label?: string; unread?: boolean; starred?: boolean; hasActions?: boolean`.
 
 Note: `has:actions` requires knowing if an email has action items. Claude stores `summary` as a JSON blob with `actionItems: string[]`. Add a JSON1-based filter:
 ```sql
@@ -1228,12 +1272,13 @@ if (params.hasActions === true)  conditions.push("summary IS NOT NULL AND json_a
 if (params.hasActions === false) conditions.push("(summary IS NULL OR json_array_length(json_extract(summary, '$.actionItems')) = 0)");
 ```
 
-Extend `EmailListParams` in shared types accordingly.
+Extend `EmailListParams` in shared types accordingly, and update `ParsedQuery.filters` in `packages/shared/src/types.ts` to match the richer filter shape used here. Do not leave `search.ts` assigning operator-parsed results into a `ParsedQuery` type that lacks `label` / `unread` / `starred` / `hasActions`.
 
 - [ ] **Step 6: Verify all tests, commit**
 
 ```
 cd packages/backend && npx vitest run src/services/search-parser.test.ts src/services/search.test.ts src/services/db.test.ts
+npm run build
 git add packages/backend/src/services/search-parser.ts packages/backend/src/services/search-parser.test.ts packages/backend/src/services/search.ts packages/backend/src/services/search.test.ts packages/backend/src/services/db.ts packages/backend/src/services/db.test.ts packages/shared/src/types.ts
 git commit -m "feat(search): operator-based query parser complementing LLM search"
 ```
@@ -1267,6 +1312,8 @@ it('GET /status returns ok with database=connected', async () => {
 
 - [ ] **Step 3: Implement**
 
+Path-resolution note: avoid `path.join(..., '../../package.json')` with `readFileSync`, because that relative path can resolve differently in dev (`tsx` / strip-types) vs compiled output. Use `new URL('../../package.json', import.meta.url)` for a stable module-relative path.
+
 ```ts
 // services/db.ts add:
 ping(): boolean;
@@ -1282,10 +1329,8 @@ ping() {
 import type { FastifyInstance } from 'fastify';
 import type { DbHandle } from '../services/db.js';
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import * as path from 'node:path';
 
-const pkg = JSON.parse(readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../../package.json'), 'utf-8'));
+const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf-8'));
 
 export async function statusRoutes(app: FastifyInstance, opts: { db: DbHandle }) {
   app.get('/status', async () => ({
@@ -1326,6 +1371,10 @@ Factor the existing gap-fill loop inside `runSyncCycle` (sync.ts lines ~61–97)
 - Modify: `packages/backend/src/routes/sync.ts` — add routes.
 - Modify: `packages/backend/src/routes/sync.test.ts`
 - Modify: `packages/backend/src/services/db.ts` — add `getGap(id)`.
+
+**Budget note:** When refactoring the existing gap loop inside `runSyncCycle` to call `fillSingleGap`, pass the current remaining-budget value as that helper's `batchSize` argument. Do NOT substitute the route handler's `defaultBatchSize`, or the sync-cycle budget capping behavior will change.
+
+**Test-mock note:** After adding `getGap(id)` to `DbHandle`, update any partial `DbHandle` mocks in tests to include `getGap: vi.fn()` so TypeScript keeps compiling. This includes `packages/backend/src/services/sync.test.ts` mock objects and any similar ad hoc mocks elsewhere.
 
 - [ ] **Step 1: Failing test**
 
@@ -1648,6 +1697,14 @@ git commit -m "feat(gmail): retry with exponential backoff on 429/500/503"
 
 **Approach:** Add `llmVerboseLogging: boolean` to `AppConfig`. When true, log request (model, messages snippet or full, max tokens) at `info` and response (usage tokens, content snippet) at `info`. Truncate content to 500 chars per line to avoid flooding. Never log API keys or full auth headers.
 
+**Signature decision:** Keep `LLMConfig` clean. Do NOT put `verbose` or `logger` inside `LLMConfig`. Change `createAiService` to accept a second options argument:
+
+```ts
+createAiService(llmConfig, { verbose?: boolean; logger?: Logger })
+```
+
+and pass `config.llmVerboseLogging` plus `app.log` through that second argument.
+
 **Files:**
 - Modify: `packages/backend/src/services/ai.ts`
 - Modify: `packages/backend/src/services/ai.test.ts`
@@ -1660,9 +1717,10 @@ git commit -m "feat(gmail): retry with exponential backoff on 429/500/503"
 it('logs request and response when verbose logging enabled', async () => {
   const logs: string[] = [];
   const logger = { info: (msg: string) => logs.push(msg), error: () => {} };
-  const ai = createAiService({
-    provider: 'openai', apiKey: 'k', model: 'gpt', baseUrl: 'http://x', verbose: true, logger,
-  } as any);
+  const ai = createAiService(
+    { provider: 'openai', apiKey: 'k', model: 'gpt', baseUrl: 'http://x' } as any,
+    { verbose: true, logger }
+  );
   // Mock fetch to return a canned response
   // ...
   await ai.summarizeEmail({ subject: 's', bodyText: 'hello' } as any);
@@ -1675,7 +1733,16 @@ it('logs request and response when verbose logging enabled', async () => {
 
 - [ ] **Step 3: Implement**
 
-In `services/ai.ts`, accept an optional `verbose: boolean` and `logger` (fall back to `console`). Inside each LLM call:
+In `services/ai.ts`, change `createAiService` to accept a second options argument `{ verbose?: boolean; logger?: Logger }` (fall back to `console`). Do not add `verbose` or `logger` fields to `LLMConfig`.
+
+```ts
+interface CreateAiServiceOptions {
+  verbose?: boolean;
+  logger?: { info: (msg: string) => void; error?: (msg: string, err?: unknown) => void };
+}
+```
+
+Inside each LLM call:
 
 ```ts
 if (verbose) logger.info(`[ai] request model=${model} prompt=${truncate(prompt, 500)}`);
@@ -1686,7 +1753,14 @@ if (verbose) logger.info(`[ai] response usage=${JSON.stringify(json.usage ?? {})
 
 Where `truncate(s, n) = s.length > n ? s.slice(0, n) + '…' : s`.
 
-In `server.ts`, pass `verbose: config.llmVerboseLogging ?? false, logger: app.log` into `createAiService`.
+In `server.ts`, pass the options explicitly:
+
+```ts
+const ai = createAiService(config.llm, {
+  verbose: config.llmVerboseLogging ?? false,
+  logger: app.log,
+});
+```
 
 - [ ] **Step 4: Verify and commit**
 

@@ -11,8 +11,9 @@ export interface DbHandle {
   trashEmail(id: string): void;
   upsertEmbedding(emailId: string, vector: number[]): void;
   searchEmbeddings(queryVector: number[], k: number): Array<{ emailId: string; distance: number }>;
-  getSyncState(): Pick<SyncStatus, 'totalSynced' | 'newestDate' | 'oldestDate'>;
+  getSyncState(): Pick<SyncStatus, 'totalSynced' | 'newestDate' | 'oldestDate' | 'lastHistoryId'>;
   updateSyncState(state: { newestDate: string; oldestDate: string; totalSynced: number }): void;
+  setLastHistoryId(id: string | null): void;
   listGaps(): Gap[];
   createGap(gap: { newerBoundary: string; olderBoundary: string; estimatedCount: number }): Gap;
   deleteGap(id: number): void;
@@ -20,6 +21,8 @@ export interface DbHandle {
   getEmailsWithoutEmbedding(limit: number): Email[];
   getNextEmailWithoutSummary(): Email | null;
   countEmailsWithoutSummary(): number;
+  markEmailRemoved(id: string, state: 'archived' | 'deleted'): void;
+  clearEmailRemoved(id: string): void;
   close(): void;
 }
 
@@ -118,6 +121,19 @@ function applySchema(db: Database.Database): void {
   if (emailsCols.includes('embedding_strategy')) {
     db.exec('ALTER TABLE emails DROP COLUMN embedding_strategy');
   }
+
+  // Migration: add last_history_id column to sync_state
+  const syncCols = (db.prepare("PRAGMA table_info(sync_state)").all() as Array<{ name: string }>).map(c => c.name);
+  if (!syncCols.includes('last_history_id')) {
+    db.exec('ALTER TABLE sync_state ADD COLUMN last_history_id TEXT');
+  }
+
+  // Migration: add removed_state soft-delete column
+  const emailsCols2 = (db.prepare("PRAGMA table_info(emails)").all() as Array<{ name: string }>).map(c => c.name);
+  if (!emailsCols2.includes('removed_state')) {
+    db.exec("ALTER TABLE emails ADD COLUMN removed_state TEXT");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_emails_removed ON emails(removed_state)");
+  }
 }
 
 function rowToEmail(row: Record<string, unknown>): Email {
@@ -132,6 +148,7 @@ function rowToEmail(row: Record<string, unknown>): Email {
     bodyHtml: (row.body_html as string) ?? null,
     labels: JSON.parse((row.labels as string) ?? '[]') as string[],
     summary: row.summary ? (JSON.parse(row.summary as string) as EmailSummary) : null,
+    removedState: (row.removed_state as 'archived' | 'deleted' | null) ?? null,
   };
 }
 
@@ -174,7 +191,7 @@ export function createDb(dbPath: string): DbHandle {
     },
 
     listEmails(params) {
-      const conditions: string[] = ["labels LIKE '%INBOX%'"];
+      const conditions: string[] = ["labels LIKE '%INBOX%'", "removed_state IS NULL"];
       const bindings: unknown[] = [];
 
       if (params.sender) {
@@ -231,6 +248,7 @@ export function createDb(dbPath: string): DbHandle {
         totalSynced: (row?.total_synced as number) ?? 0,
         newestDate: (row?.newest_date as string) ?? null,
         oldestDate: (row?.oldest_date as string) ?? null,
+        lastHistoryId: (row?.last_history_id as string) ?? null,
       };
     },
 
@@ -300,7 +318,7 @@ export function createDb(dbPath: string): DbHandle {
       const rows = db.prepare(`
         SELECT e.* FROM emails e
         LEFT JOIN vec_embeddings ve ON ve.email_id = e.id
-        WHERE ve.email_id IS NULL
+        WHERE ve.email_id IS NULL AND e.removed_state IS NULL
         ORDER BY e.date DESC LIMIT ?
       `).all(limit) as Record<string, unknown>[];
       return rows.map(rowToEmail);
@@ -308,16 +326,28 @@ export function createDb(dbPath: string): DbHandle {
 
     getNextEmailWithoutSummary() {
       const row = db.prepare(
-        'SELECT * FROM emails WHERE summary IS NULL ORDER BY date DESC LIMIT 1'
+        'SELECT * FROM emails WHERE summary IS NULL AND removed_state IS NULL ORDER BY date DESC LIMIT 1'
       ).get() as Record<string, unknown> | undefined;
       return row ? rowToEmail(row) : null;
     },
 
     countEmailsWithoutSummary() {
       const row = db.prepare(
-        'SELECT COUNT(*) as count FROM emails WHERE summary IS NULL'
+        'SELECT COUNT(*) as count FROM emails WHERE summary IS NULL AND removed_state IS NULL'
       ).get() as { count: number };
       return row.count;
+    },
+
+    setLastHistoryId(id) {
+      db.prepare('UPDATE sync_state SET last_history_id = ? WHERE id = 1').run(id);
+    },
+
+    markEmailRemoved(id, state) {
+      db.prepare('UPDATE emails SET removed_state = ? WHERE id = ?').run(state, id);
+    },
+
+    clearEmailRemoved(id) {
+      db.prepare('UPDATE emails SET removed_state = NULL WHERE id = ?').run(id);
     },
 
     close() {

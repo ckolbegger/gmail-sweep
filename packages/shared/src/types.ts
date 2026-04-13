@@ -9,6 +9,7 @@ export interface Email {
   bodyHtml: string | null;
   labels: string[];
   summary: EmailSummary | null;
+  removedState?: 'archived' | 'deleted' | null;
 }
 
 export interface EmailSummary {
@@ -28,6 +29,7 @@ export interface SyncStatus {
   totalSynced: number;
   newestDate: string | null;
   oldestDate: string | null;
+  lastHistoryId: string | null;
   hasGaps: boolean;
   gaps: Gap[];
 }
