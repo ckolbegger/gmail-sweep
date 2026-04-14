@@ -19,9 +19,6 @@ CREATE TABLE IF NOT EXISTS emails (
   key_points TEXT,
   summary_model TEXT,
   summary_generated_at INTEGER,
-  embedding BLOB,
-  embedding_model TEXT,
-  embedding_generated_at INTEGER,
   removed_state TEXT DEFAULT NULL
 );
 

@@ -7,15 +7,15 @@ function runMigrations(db: Database): void {
   if (!cols.some((c) => c.name === "removed_state")) {
     db.run("ALTER TABLE emails ADD COLUMN removed_state TEXT DEFAULT NULL");
   }
-  // Restore embedding columns if a prior destructive migration removed them.
-  if (!cols.some((c) => c.name === "embedding")) {
-    db.run("ALTER TABLE emails ADD COLUMN embedding BLOB");
+  // Phase E: drop legacy embedding columns (migrated to vec_embeddings in Phase D)
+  if (cols.some((c) => c.name === "embedding")) {
+    db.run("ALTER TABLE emails DROP COLUMN embedding");
   }
-  if (!cols.some((c) => c.name === "embedding_model")) {
-    db.run("ALTER TABLE emails ADD COLUMN embedding_model TEXT");
+  if (cols.some((c) => c.name === "embedding_model")) {
+    db.run("ALTER TABLE emails DROP COLUMN embedding_model");
   }
-  if (!cols.some((c) => c.name === "embedding_generated_at")) {
-    db.run("ALTER TABLE emails ADD COLUMN embedding_generated_at INTEGER");
+  if (cols.some((c) => c.name === "embedding_generated_at")) {
+    db.run("ALTER TABLE emails DROP COLUMN embedding_generated_at");
   }
 }
 

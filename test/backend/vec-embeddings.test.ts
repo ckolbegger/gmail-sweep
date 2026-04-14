@@ -36,14 +36,14 @@ describe("vec_embeddings virtual table", () => {
   });
 });
 
-describe("embedding column rollback migration", () => {
-  test("re-adds embedding columns if a prior migration dropped them", () => {
+describe("legacy embedding column cleanup", () => {
+  test("initDb drops old embedding columns if they still exist", () => {
     const { mkdtempSync, rmSync } = require("node:fs");
     const { join } = require("node:path");
     const { tmpdir } = require("node:os");
 
-    // Create a database that ran the destructive Phase A: emails without embedding columns
-    const dir = mkdtempSync(join(tmpdir(), "gs-rollback-"));
+    // Create a database with the old schema (embedding columns present)
+    const dir = mkdtempSync(join(tmpdir(), "gs-cleanup-"));
     const path = join(dir, "test.db");
 
     const db1 = new Database(path);
@@ -69,21 +69,33 @@ describe("embedding column rollback migration", () => {
         key_points TEXT,
         summary_model TEXT,
         summary_generated_at INTEGER,
+        embedding BLOB,
+        embedding_model TEXT,
+        embedding_generated_at INTEGER,
         removed_state TEXT DEFAULT NULL
       )
     `);
     const colsBefore = db1.query("PRAGMA table_info(emails)").all() as { name: string }[];
-    expect(colsBefore.some((c) => c.name === "embedding")).toBe(false);
+    expect(colsBefore.some((c) => c.name === "embedding")).toBe(true);
     db1.close();
 
-    // Run initDb (which includes the rollback migration)
+    // Run initDb (which should drop the legacy columns)
     const db2 = initDb(path);
     const cols = db2.query("PRAGMA table_info(emails)").all() as { name: string }[];
     const colNames = cols.map((c) => c.name);
-    expect(colNames).toContain("embedding");
-    expect(colNames).toContain("embedding_model");
-    expect(colNames).toContain("embedding_generated_at");
+    expect(colNames).not.toContain("embedding");
+    expect(colNames).not.toContain("embedding_model");
+    expect(colNames).not.toContain("embedding_generated_at");
     db2.close();
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("fresh initDb has no legacy embedding columns", () => {
+    const db = initDb(":memory:");
+    const cols = db.query("PRAGMA table_info(emails)").all() as { name: string }[];
+    const colNames = cols.map((c) => c.name);
+    expect(colNames).not.toContain("embedding");
+    expect(colNames).not.toContain("embedding_model");
+    expect(colNames).not.toContain("embedding_generated_at");
   });
 });
