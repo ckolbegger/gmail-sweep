@@ -17,6 +17,7 @@ import { searchRoutes } from './routes/search.js';
 import { configRoutes } from './routes/config.js';
 import { summarizerRoutes } from './routes/summarizer.js';
 import { labelsRoutes } from './routes/labels.js';
+import { statusRoutes } from './routes/status.js';
 
 export async function buildServer(options?: { dbPath?: string }) {
   const app = Fastify({ logger: true });
@@ -45,6 +46,7 @@ export async function buildServer(options?: { dbPath?: string }) {
   await app.register(configRoutes);
   await app.register(summarizerRoutes, { summarizer });
   await app.register(labelsRoutes, { gmail });
+  await app.register(statusRoutes, { db });
 
   const poller = createAutoPoller({
     intervalMs: config.sync.autoPollIntervalMs ?? 0,

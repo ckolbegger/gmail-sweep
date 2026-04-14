@@ -58,6 +58,16 @@ describe('search service', () => {
     expect(result.emails).toHaveLength(2);
   });
 
+  it('uses operator parser instead of LLM when operators present', async () => {
+    db.upsertEmail(makeEmail('1', 'alice@example.com', 'invoice', '2026-03-01T00:00:00Z', 'pay now'));
+    db.upsertEmail(makeEmail('2', 'bob@example.com', 'hello', '2026-03-02T00:00:00Z', 'hi there'));
+    const aiMock = { parseSearchQuery: vi.fn(), summarizeEmail: vi.fn() };
+    const search = createSearchService(db, aiMock as any, mockEmbed);
+    const res = await search.search({ query: 'from:alice' });
+    expect(aiMock.parseSearchQuery).not.toHaveBeenCalled();
+    expect(res.emails.map(e => e.id)).toContain('1');
+  });
+
   it('returns scores for each result', async () => {
     db.upsertEmail(makeEmail('a', 'a@b.com', 'Test', '2026-03-01T00:00:00Z', 'test'));
 

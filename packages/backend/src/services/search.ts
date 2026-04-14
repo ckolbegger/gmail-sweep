@@ -1,7 +1,8 @@
 import type { DbHandle } from './db.js';
 import type { AiService } from './ai.js';
 import type { EmbedService } from './embed.js';
-import type { SearchRequest, SearchResult } from '@gmail-sweep/shared';
+import type { SearchRequest, SearchResult, EmailListParams } from '@gmail-sweep/shared';
+import { parseOperatorQuery } from './search-parser.js';
 
 export interface SearchService {
   search(request: SearchRequest): Promise<SearchResult>;
@@ -10,13 +11,33 @@ export interface SearchService {
 export function createSearchService(db: DbHandle, ai: AiService, embed: EmbedService): SearchService {
   return {
     async search({ query, limit = 20 }) {
-      // Step 1: AI parses the query into structured filters + semantic query
-      let parsed;
-      try {
-        parsed = await ai.parseSearchQuery(query);
-      } catch (err) {
-        console.warn('[search] parseSearchQuery failed:', err);
-        throw err;
+      // Step 1: Parse query — use operator parser first; fall back to LLM if no operators
+      let parsed: { filters: EmailListParams; semanticQuery: string };
+
+      const opQuery = parseOperatorQuery(query);
+      const hasOperators = Object.keys(opQuery.operators).length > 0;
+
+      if (hasOperators) {
+        parsed = {
+          filters: {
+            sender: opQuery.operators.from,
+            subject: opQuery.operators.subject,
+            date_from: opQuery.operators.after,
+            date_to: opQuery.operators.before,
+            label: opQuery.operators.label,
+            unread: opQuery.operators.is === 'unread' ? true : opQuery.operators.is === 'read' ? false : undefined,
+            starred: opQuery.operators.is === 'starred' ? true : undefined,
+            hasActions: opQuery.operators.has === 'actions' ? true : opQuery.operators.has === 'no-actions' ? false : undefined,
+          },
+          semanticQuery: opQuery.freeText,
+        };
+      } else {
+        try {
+          parsed = await ai.parseSearchQuery(query);
+        } catch (err) {
+          console.warn('[search] parseSearchQuery failed:', err);
+          throw err;
+        }
       }
 
       // Step 2: SQL filter on structured columns (fast indexed queries)
@@ -25,6 +46,10 @@ export function createSearchService(db: DbHandle, ai: AiService, embed: EmbedSer
         date_from: parsed.filters.date_from,
         date_to: parsed.filters.date_to,
         subject: parsed.filters.subject,
+        label: parsed.filters.label,
+        unread: parsed.filters.unread,
+        starred: parsed.filters.starred,
+        hasActions: parsed.filters.hasActions,
         limit: candidatesLimit(limit),
       });
 

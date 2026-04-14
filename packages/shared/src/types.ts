@@ -123,4 +123,6 @@ export interface EmailListParams {
   anchor_unsummarized?: boolean;   // if true, backend anchors results at newest unsummarized email
   unread?: boolean;
   label?: string;
+  starred?: boolean;
+  hasActions?: boolean;
 }

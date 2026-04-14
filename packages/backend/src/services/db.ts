@@ -26,6 +26,7 @@ export interface DbHandle {
   deleteEmail(id: string): void;
   getGap(id: number): Gap | null;
   setReadState(id: string, read: boolean): void;
+  ping(): boolean;
   close(): void;
 }
 
@@ -219,6 +220,9 @@ export function createDb(dbPath: string): DbHandle {
         conditions.push("labels LIKE ?");
         bindings.push(`%"${params.label}"%`);
       }
+      if (params.starred === true)  conditions.push("labels LIKE '%\"STARRED\"%'");
+      if (params.hasActions === true)  conditions.push("summary IS NOT NULL AND json_array_length(json_extract(summary, '$.actionItems')) > 0");
+      if (params.hasActions === false) conditions.push("(summary IS NULL OR json_array_length(json_extract(summary, '$.actionItems')) = 0)");
 
       const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
       const limit = params.limit ?? 50;
@@ -380,6 +384,10 @@ export function createDb(dbPath: string): DbHandle {
       const labels = (JSON.parse(row.labels) as string[]).filter(l => l !== 'UNREAD');
       if (!read) labels.push('UNREAD');
       db.prepare('UPDATE emails SET labels = ? WHERE id = ?').run(JSON.stringify(labels), id);
+    },
+
+    ping() {
+      try { db.prepare('SELECT 1').get(); return true; } catch { return false; }
     },
 
     close() {
