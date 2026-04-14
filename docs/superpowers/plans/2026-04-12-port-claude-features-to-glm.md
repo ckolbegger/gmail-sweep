@@ -1000,6 +1000,77 @@ git add src/backend/services/embedding-worker.ts src/backend/services/search.ts 
 git commit -m "feat(search): atomic cutover — worker writes vec0, search reads vec0, wired into sync"
 ```
 
+### Task 4.5: Sync chaining — embeddingWorker must run independently of summaryWorker `[adversarial-review fix]`
+
+- [ ] **Step 1: Write failing test** — append to `test/backend/routes/sync.test.ts`: stub `summaryWorker` as `undefined` but provide an `embeddingWorker`. Call POST /sync. Assert `embeddingWorker.processPending()` was called.
+
+- [ ] **Step 2: Run — FAIL.**
+
+- [ ] **Step 3: Fix** — in `src/backend/routes/sync.ts`, restructure the chaining so `embeddingWorker.processPending()` runs independently after sync completes, not nested inside the `summaryWorker` chain. Both workers should fire if sync fetched > 0.
+
+```ts
+syncService.syncNewest(batchSize)
+  .then((result) => {
+    if (result.fetched > 0) {
+      const tasks: Promise<void>[] = [];
+      if (summaryWorker) {
+        tasks.push(summaryWorker.processPending().then(() => {}).catch((err) => {
+          console.error("Summary worker error:", err);
+        }));
+      }
+      if (embeddingWorker) {
+        tasks.push(embeddingWorker.processPending().catch((err) => {
+          console.error("Embedding worker error:", err);
+        }));
+      }
+      return Promise.all(tasks).then(() => {});
+    }
+  })
+```
+
+- [ ] **Step 4: Run — PASS.**
+
+### Task 4.6: Auto-poller must chain summary + embedding workers after sync `[adversarial-review fix]`
+
+- [ ] **Step 1: Write failing test** — create `test/backend/auto-poller-embedding.test.ts` or append to existing auto-poller test: instantiate `AutoPoller` with an `onSync` callback that also chains workers. Verify that after the callback runs, emails in the DB get vec_embeddings rows.
+
+- [ ] **Step 2: Run — FAIL** (auto-poller doesn't chain workers).
+
+- [ ] **Step 3: Fix** — in `src/backend/index.ts`, change the auto-poller's `onSync` to chain both workers after sync:
+
+```ts
+onSync: async () => {
+  const result = await syncService.syncNewest(config.sync.batch_size);
+  if (result.fetched > 0) {
+    try { await summaryWorker.processPending(); } catch (e) { console.error("Summary worker error:", e); }
+    try { await embeddingWorker.processPending(); } catch (e) { console.error("Embedding worker error:", e); }
+  }
+},
+```
+
+- [ ] **Step 4: Run — PASS.**
+
+### Task 6.3: LLM parseSearchQuery must fall back to pure SQL on failure `[adversarial-review fix]`
+
+- [ ] **Step 1: Write failing test** — append to `test/backend/services/search-llm.test.ts`: create a SearchService with an LLM provider whose `parseSearchQuery` throws. Call `search("meeting")`. Assert it returns SQL-based results instead of throwing.
+
+- [ ] **Step 2: Run — FAIL.**
+
+- [ ] **Step 3: Fix** — in `src/backend/services/search.ts`, wrap the LLM call in try/catch:
+
+```ts
+if (this.llmProvider) {
+  try {
+    const llmParsed = await this.llmProvider.parseSearchQuery(query);
+    // ... existing LLM logic
+  } catch {
+    // Fall through to pure SQL search below
+  }
+}
+```
+
+- [ ] **Step 4: Run — PASS.**
+
 ---
 
 ## Feature 5 — User-pluggable extraction strategy templates (Phase D — atomic semantic-search cutover) `[source: both]`

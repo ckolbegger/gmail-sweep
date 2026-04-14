@@ -3,13 +3,15 @@ import type { SyncService } from "@backend/services/sync";
 import type { GmailAdapter } from "@backend/gmail/adapter";
 import { GapManager } from "@backend/services/gap-manager";
 import type { SummaryWorker } from "@backend/services/summary-worker";
+import type { EmbeddingWorker } from "@backend/services/embedding-worker";
 import type Database from "bun:sqlite";
 
 export function createSyncRouter(
   syncService: SyncService,
   adapter: GmailAdapter,
   db: Database,
-  summaryWorker?: SummaryWorker
+  summaryWorker?: SummaryWorker,
+  embeddingWorker?: EmbeddingWorker
 ) {
   const router = new Hono();
   const gapManager = new GapManager(db);
@@ -25,10 +27,24 @@ export function createSyncRouter(
     syncInProgress = true;
     syncService.syncNewest(batchSize)
       .then((result) => {
-        if (summaryWorker && result.fetched > 0) {
-          summaryWorker.processPending().catch((err) => {
-            console.error("Summary worker error:", err);
-          });
+        if (result.fetched > 0) {
+          const tasks: Promise<void>[] = [];
+          if (summaryWorker) {
+            tasks.push(
+              summaryWorker.processPending().then(() => {}).catch((err) => {
+                console.error("Summary worker error:", err);
+              })
+            );
+          }
+          if (embeddingWorker) {
+            tasks.push(
+              embeddingWorker.processPending().then(() => {}).catch((err) => {
+                console.error("Embedding worker error:", err);
+              })
+            );
+          }
+          // Run workers in parallel — each has its own try/catch
+          Promise.all(tasks);
         }
       })
       .catch((err) => {

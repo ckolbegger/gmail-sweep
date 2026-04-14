@@ -11,6 +11,8 @@ import { SummaryWorker } from "./services/summary-worker";
 import { SyncService } from "./services/sync";
 import { AutoPoller } from "./services/auto-poller";
 import { createApp } from "./server";
+import { createEmbedProvider } from "./services/embed-provider";
+import { EmbeddingWorker } from "./services/embedding-worker";
 
 function expandPath(p: string): string {
   return p.startsWith("~") ? resolve(homedir(), p.slice(1)) : p;
@@ -48,14 +50,54 @@ const gmailAdapter = oauth
 const llmProvider = createLlmProvider(config.llm);
 const summaryWorker = new SummaryWorker(db, llmProvider);
 
-const app = createApp({ db, oauth, tokenStore, gmailAdapter, llmProvider, summaryWorker, configPath });
+const embedProvider = createEmbedProvider({
+  provider: config.embedding.provider,
+  model: config.embedding.model,
+  dimension: config.embedding.dimension,
+  api_key: config.embedding.api_key,
+  base_url: config.embedding.base_url,
+});
+const activeStrategy = config.content_extraction.strategies[config.content_extraction.active_strategy]
+  ?? { type: "template" as const, template: "Subject: {{subject}}\n\n{{body_text}}" };
+const embeddingWorker = new EmbeddingWorker(
+  db,
+  embedProvider,
+  activeStrategy,
+  config.embedding.dimension
+);
+
+const app = createApp({
+  db,
+  oauth,
+  tokenStore,
+  gmailAdapter,
+  llmProvider,
+  embeddingProvider: embedProvider,
+  embeddingWorker,
+  summaryWorker,
+  configPath,
+});
 
 // Start auto-poller
 if (gmailAdapter && config.sync.poll_interval_seconds > 0) {
   const syncService = new SyncService(db, gmailAdapter);
   const poller = new AutoPoller({
     intervalMs: config.sync.poll_interval_seconds * 1000,
-    onSync: async () => { await syncService.syncNewest(config.sync.batch_size); },
+    onSync: async () => {
+	      const result = await syncService.syncNewest(config.sync.batch_size);
+	      if (result.fetched > 0) {
+	        try {
+	          await summaryWorker.processPending();
+	        } catch (err) {
+	          console.error("Summary worker error:", err);
+	        }
+	        try {
+	          await embeddingWorker.processPending();
+	        } catch (err) {
+	          console.error("Embedding worker error:", err);
+	        }
+	      }
+	    },
     isAuthorized: () => !!tokenStore.load(),
   });
   poller.start();

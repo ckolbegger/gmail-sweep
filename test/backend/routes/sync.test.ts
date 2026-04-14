@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import { createSyncRouter } from "@backend/routes/sync";
 import { SyncService } from "@backend/services/sync";
 import { MockGmailAdapter } from "@backend/gmail/mock";
@@ -126,6 +126,78 @@ describe("Sync routes (basic)", () => {
     it("should return 404 if gap does not exist", async () => {
       const res = await app.request("/sync/gaps/999", { method: "DELETE" });
       expect(res.status).toBe(404);
+    });
+  });
+
+  describe("worker chaining", () => {
+    it("should call embeddingWorker even when summaryWorker is undefined", async () => {
+      const embedProcessPending = mock(() => Promise.resolve({ processed: 0, failed: 0 }));
+      const embeddingWorker = { processPending: embedProcessPending } as any;
+
+      // Add a message so syncNewest returns fetched > 0
+      adapter.addMessage({
+        id: "msg1",
+        threadId: "t1",
+        sender: "a@b.com",
+        recipients: ["c@d.com"],
+        subject: "Test",
+        bodyText: "body",
+        bodyHtml: "",
+        dateSent: Date.now(),
+        dateReceived: Date.now(),
+        labels: [],
+        isRead: false,
+        isStarred: false,
+      });
+
+      app = new Hono().route(
+        "/",
+        createSyncRouter(syncService, adapter, db, undefined, embeddingWorker)
+      );
+
+      const res = await app.request("/sync", { method: "POST" });
+      expect(res.status).toBe(202);
+
+      // Wait for background sync + worker processing
+      await new Promise((r) => setTimeout(r, 300));
+
+      expect(embedProcessPending).toHaveBeenCalled();
+    });
+
+    it("should call embeddingWorker and summaryWorker independently (both present)", async () => {
+      const summaryProcessPending = mock(() => Promise.resolve({ processed: 0, failed: 0 }));
+      const embedProcessPending = mock(() => Promise.resolve({ processed: 0, failed: 0 }));
+      const summaryWorker = { processPending: summaryProcessPending } as any;
+      const embeddingWorker = { processPending: embedProcessPending } as any;
+
+      // Add a message so syncNewest returns fetched > 0
+      adapter.addMessage({
+        id: "msg1",
+        threadId: "t1",
+        sender: "a@b.com",
+        recipients: ["c@d.com"],
+        subject: "Test",
+        bodyText: "body",
+        bodyHtml: "",
+        dateSent: Date.now(),
+        dateReceived: Date.now(),
+        labels: [],
+        isRead: false,
+        isStarred: false,
+      });
+
+      app = new Hono().route(
+        "/",
+        createSyncRouter(syncService, adapter, db, summaryWorker, embeddingWorker)
+      );
+
+      const res = await app.request("/sync", { method: "POST" });
+      expect(res.status).toBe(202);
+
+      await new Promise((r) => setTimeout(r, 300));
+
+      expect(summaryProcessPending).toHaveBeenCalled();
+      expect(embedProcessPending).toHaveBeenCalled();
     });
   });
 });

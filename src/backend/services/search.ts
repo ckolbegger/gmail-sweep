@@ -1,9 +1,7 @@
 import type Database from "bun:sqlite";
 import { parseQuery, buildSqlFilters } from "./search-parser";
-
-export interface EmbeddingProvider {
-  embed(text: string): Promise<number[]>;
-}
+import type { EmbedProvider } from "./embed-provider";
+import type { LLMProvider, ParsedQuery } from "../llm/provider";
 
 export interface SearchResult {
   id: string;
@@ -21,20 +19,80 @@ export interface SearchResult {
 export class SearchService {
   constructor(
     private db: Database,
-    private embeddingProvider?: EmbeddingProvider
+    private embeddingProvider?: EmbedProvider,
+    private llmProvider?: LLMProvider
   ) {}
 
   async search(query: string, limit: number = 50): Promise<SearchResult[]> {
     const parsed = parseQuery(query);
     const { where, params } = buildSqlFilters(parsed);
 
-    // If no free text, or no embedding provider -> pure SQL search
+    const hasOperatorFilters = Object.keys(parsed.operators).length > 0;
+
+    // If operators are present, always use operator-based search (no LLM fallback)
+    if (hasOperatorFilters) {
+      if (!parsed.freeText.trim() || !this.embeddingProvider) {
+        return this.sqlSearch(parsed.freeText, where, params, limit);
+      }
+      return this.vectorSearch(parsed.freeText, where, params, limit);
+    }
+
+    // No operators — try LLM parser if available
+    if (this.llmProvider) {
+      try {
+        const llmParsed = await this.llmProvider.parseSearchQuery(query);
+        const { where: llmWhere, params: llmParams } = this.buildLlmSqlFilters(llmParsed);
+        const combinedWhere = [where, llmWhere].filter(Boolean).join(" AND ");
+        const combinedParams = [...params, ...llmParams];
+
+        if (llmParsed.semanticQuery && this.embeddingProvider) {
+          return this.vectorSearch(llmParsed.semanticQuery, combinedWhere, combinedParams, limit);
+        }
+
+        // Semantic query empty or no embedding provider — SQL-only with LLM filters
+        return this.sqlSearch("", combinedWhere, combinedParams, limit);
+      } catch (err) {
+        console.error("LLM parseSearchQuery failed, falling back to SQL:", err);
+      }
+    }
+
+    // No operators, no LLM — pure SQL
     if (!parsed.freeText.trim() || !this.embeddingProvider) {
       return this.sqlSearch(parsed.freeText, where, params, limit);
     }
 
-    // Vector search with filters
     return this.vectorSearch(parsed.freeText, where, params, limit);
+  }
+
+  private buildLlmSqlFilters(llmParsed: ParsedQuery): { where: string; params: any[] } {
+    const clauses: string[] = [];
+    const params: any[] = [];
+    const { filters } = llmParsed;
+
+    if (filters.sender) {
+      clauses.push("sender LIKE ?");
+      params.push(`%${filters.sender}%`);
+    }
+
+    if (filters.subject) {
+      clauses.push("subject LIKE ?");
+      params.push(`%${filters.subject}%`);
+    }
+
+    if (filters.date_from) {
+      clauses.push("date_received >= ?");
+      params.push(new Date(`${filters.date_from}T00:00:00Z`).getTime());
+    }
+
+    if (filters.date_to) {
+      clauses.push("date_received <= ?");
+      params.push(new Date(`${filters.date_to}T23:59:59Z`).getTime());
+    }
+
+    return {
+      where: clauses.join(" AND "),
+      params,
+    };
   }
 
   private sqlSearch(
@@ -85,56 +143,31 @@ export class SearchService {
     params: any[],
     limit: number
   ): Promise<SearchResult[]> {
-    const embedding = await this.embeddingProvider!.embed(freeText);
+    const qvec = await this.embeddingProvider!.embedQuery(freeText);
+    const qbuf = Buffer.from(new Float32Array(qvec).buffer);
 
-    const whereClause = where
-      ? `WHERE ${where} AND embedding IS NOT NULL`
-      : "WHERE embedding IS NOT NULL";
+    // Pull top-K nearest from vec0, then inner-join with SQL filters
+    const k = Math.min(Math.max(limit * 10, 50), 500);
+    const knn = this.db
+      .query("SELECT email_id, distance FROM vec_embeddings WHERE embedding MATCH ? AND k = ? ORDER BY distance")
+      .all(qbuf, k) as Array<{ email_id: string; distance: number }>;
 
-    const candidates = this.db
+    if (knn.length === 0) return [];
+    const ids = knn.map((r) => r.email_id);
+    const distMap = new Map(knn.map((r) => [r.email_id, r.distance]));
+
+    const placeholders = ids.map(() => "?").join(",");
+    const whereClause = where ? `(${where}) AND id IN (${placeholders})` : `id IN (${placeholders})`;
+    const rows = this.db
       .query(
-        `SELECT id, thread_id, sender, recipients, subject, date_received, is_read, is_starred, summary, embedding
-         FROM emails
-         ${whereClause}
-         ORDER BY date_received DESC
-         LIMIT 500`
+        `SELECT id, thread_id, sender, recipients, subject, date_received, is_read, is_starred, summary
+         FROM emails WHERE ${whereClause}`
       )
-      .all(...params) as any[];
+      .all(...params, ...ids) as any[];
 
-    // Compute cosine similarity in JS
-    const scored = candidates.map((row: any) => {
-      const raw = row.embedding as Uint8Array;
-      const rowEmbedding = Array.from(new Float64Array(raw.buffer, raw.byteOffset, raw.byteLength / 8));
-      const score = cosineSimilarity(embedding, rowEmbedding);
-      return { ...row, score };
-    });
-
-    scored.sort((a: any, b: any) => b.score - a.score);
-
-    return scored.slice(0, limit).map((r: any) => ({
-      id: r.id,
-      thread_id: r.thread_id,
-      sender: r.sender,
-      recipients: r.recipients,
-      subject: r.subject,
-      date_received: r.date_received,
-      is_read: r.is_read === 1,
-      is_starred: r.is_starred === 1,
-      summary: r.summary,
-      score: r.score,
-    }));
+    return rows
+      .map((r) => ({ ...r, score: 1 - (distMap.get(r.id) ?? 1), is_read: r.is_read === 1, is_starred: r.is_starred === 1 }))
+      .sort((a: any, b: any) => b.score - a.score)
+      .slice(0, limit);
   }
-}
-
-function cosineSimilarity(a: number[], b: number[]): number {
-  let dot = 0,
-    normA = 0,
-    normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  const denominator = Math.sqrt(normA) * Math.sqrt(normB);
-  return denominator === 0 ? 0 : dot / denominator;
 }

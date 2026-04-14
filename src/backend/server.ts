@@ -7,7 +7,9 @@ import { createSearchRouter } from "./routes/search";
 import { createConfigRouter } from "./routes/config";
 import { SyncService } from "./services/sync";
 import { SearchService } from "./services/search";
-import type { EmbeddingProvider } from "./services/search";
+import type { EmbedProvider } from "./services/embed-provider";
+import type { EmbeddingWorker } from "./services/embedding-worker";
+import type { LLMProvider } from "./llm/provider";
 import type Database from "bun:sqlite";
 import type { OAuthClient } from "./auth/oauth";
 import type { TokenStore } from "./auth/token-store";
@@ -18,8 +20,9 @@ export interface ServerDeps {
   oauth?: OAuthClient | null;
   tokenStore?: TokenStore;
   gmailAdapter?: GmailAdapter;
-  llmProvider?: any;
-  embeddingProvider?: EmbeddingProvider;
+  llmProvider?: LLMProvider;
+  embeddingProvider?: EmbedProvider;
+  embeddingWorker?: EmbeddingWorker;
   summaryWorker?: any;
   configPath?: string;
 }
@@ -39,14 +42,14 @@ export function createApp(deps: ServerDeps): Hono {
 
   app.route("/", createEmailRouter({ db, gmailAdapter: deps.gmailAdapter }));
 
-  const searchService = new SearchService(db, deps.embeddingProvider);
+  const searchService = new SearchService(db, deps.embeddingProvider, deps.llmProvider);
   app.route("/", createSearchRouter(searchService));
 
   if (deps.gmailAdapter) {
     const syncService = new SyncService(db, deps.gmailAdapter);
     app.route(
       "/",
-      createSyncRouter(syncService, deps.gmailAdapter, db, deps.summaryWorker)
+      createSyncRouter(syncService, deps.gmailAdapter, db, deps.summaryWorker, deps.embeddingWorker)
     );
   }
 

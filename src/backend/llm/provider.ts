@@ -1,9 +1,15 @@
+export interface ParsedQuery {
+  filters: { sender?: string; date_from?: string; date_to?: string; subject?: string };
+  semanticQuery: string;
+}
+
 export interface LLMProvider {
   summarize(email: {
     sender: string;
     subject: string;
     body: string;
   }): Promise<SummaryResult>;
+  parseSearchQuery(query: string): Promise<ParsedQuery>;
 }
 
 export interface SummaryResult {

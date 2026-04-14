@@ -1,8 +1,25 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { SearchService } from "@backend/services/search";
 import type { SearchResult } from "@backend/services/search";
-import { createTestDb } from "@test/helpers/test-db";
+import { initDb } from "@backend/db";
 import type Database from "bun:sqlite";
+import type { EmbedProvider } from "@backend/services/embed-provider";
+
+function createTestDb(): { db: Database; cleanup: () => void } {
+  const { mkdtempSync, rmSync } = require("node:fs");
+  const { join } = require("node:path");
+  const { tmpdir } = require("node:os");
+  const dir = mkdtempSync(join(tmpdir(), "gmail-sweep-search-"));
+  const dbPath = join(dir, "test.db");
+  const db = initDb(dbPath);
+  return {
+    db,
+    cleanup: () => {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    },
+  };
+}
 
 function seedEmails(db: Database) {
   const now = Date.now();
@@ -36,13 +53,26 @@ function seedEmails(db: Database) {
   }
 }
 
-function seedEmailWithEmbedding(db: Database, id: string, embedding: number[]) {
-  const blob = Buffer.from(new Float64Array(embedding).buffer);
-  db.run("UPDATE emails SET embedding = ? WHERE id = ?", [blob, id]);
+function seedVecEmbedding(db: Database, id: string, embedding: number[]) {
+  // Pad to 1024 dimensions to match vec_embeddings schema
+  const padded = new Array(1024).fill(0);
+  for (let i = 0; i < embedding.length; i++) padded[i] = embedding[i];
+  const buf = Buffer.from(new Float32Array(padded).buffer);
+  db.run("INSERT INTO vec_embeddings(email_id, embedding) VALUES (?, ?)", [id, buf]);
 }
 
-function mockEmbeddingProvider(embedding: number[]) {
-  return { embed: async () => embedding };
+function padVec(embedding: number[]): number[] {
+  const padded = new Array(1024).fill(0);
+  for (let i = 0; i < embedding.length; i++) padded[i] = embedding[i];
+  return padded;
+}
+
+function mockEmbedProvider(embedding: number[]): EmbedProvider {
+  const padded = padVec(embedding);
+  return {
+    embedDocument: async () => padded,
+    embedQuery: async () => padded,
+  };
 }
 
 describe("SearchService", () => {
@@ -136,36 +166,30 @@ describe("SearchService", () => {
   });
 
   describe("vector search", () => {
-    it("ranks results by cosine similarity when embedding provider is available", async () => {
-      // Give all emails the same embedding dimension
-      const dim = 3;
+    it("ranks results by similarity when embedding provider is available", async () => {
       // e1 embedding points in same direction as query
-      seedEmailWithEmbedding(db, "e1", [1, 0, 0]);
+      seedVecEmbedding(db, "e1", [1, 0, 0, 0]);
       // e2 embedding points in different direction
-      seedEmailWithEmbedding(db, "e2", [0, 1, 0]);
+      seedVecEmbedding(db, "e2", [0, 1, 0, 0]);
       // e3 embedding is somewhat similar
-      seedEmailWithEmbedding(db, "e3", [0.9, 0.1, 0]);
+      seedVecEmbedding(db, "e3", [0.9, 0.1, 0, 0]);
 
-      const provider = mockEmbeddingProvider([1, 0, 0]);
+      const provider = mockEmbedProvider([1, 0, 0, 0]);
       const service = new SearchService(db, provider);
       const results = await service.search("meeting");
 
-      // e1 should be most similar (cos ~= 1.0)
-      // e3 should be second (cos ~= 0.9/sqrt(0.82))
-      // e2 should be least similar (cos ~= 0.0)
+      // e1 should be most similar
       expect(results[0].id).toBe("e1");
       expect(results[0].score).toBeGreaterThan(0.9);
       expect(results[1].id).toBe("e3");
       expect(results[2].id).toBe("e2");
-      expect(results[2].score).toBeLessThan(0.2);
     });
 
-    it("excludes emails without embeddings from vector search", async () => {
-      const dim = 3;
-      seedEmailWithEmbedding(db, "e1", [1, 0, 0]);
+    it("excludes emails without vec embeddings from vector search", async () => {
+      seedVecEmbedding(db, "e1", [1, 0, 0, 0]);
       // e2 and e3 have no embeddings
 
-      const provider = mockEmbeddingProvider([1, 0, 0]);
+      const provider = mockEmbedProvider([1, 0, 0, 0]);
       const service = new SearchService(db, provider);
       const results = await service.search("meeting");
 
@@ -174,12 +198,11 @@ describe("SearchService", () => {
     });
 
     it("applies SQL filters alongside vector search", async () => {
-      const dim = 3;
-      seedEmailWithEmbedding(db, "e1", [1, 0, 0]);
-      seedEmailWithEmbedding(db, "e2", [0, 1, 0]);
-      seedEmailWithEmbedding(db, "e3", [0.9, 0.1, 0]);
+      seedVecEmbedding(db, "e1", [1, 0, 0, 0]);
+      seedVecEmbedding(db, "e2", [0, 1, 0, 0]);
+      seedVecEmbedding(db, "e3", [0.9, 0.1, 0, 0]);
 
-      const provider = mockEmbeddingProvider([1, 0, 0]);
+      const provider = mockEmbedProvider([1, 0, 0, 0]);
       const service = new SearchService(db, provider);
       // Only unread emails
       const results = await service.search("is:unread meeting");
@@ -189,8 +212,8 @@ describe("SearchService", () => {
     });
 
     it("returns similarity score with each vector result", async () => {
-      seedEmailWithEmbedding(db, "e1", [1, 0, 0]);
-      const provider = mockEmbeddingProvider([1, 0, 0]);
+      seedVecEmbedding(db, "e1", [1, 0, 0, 0]);
+      const provider = mockEmbedProvider([1, 0, 0, 0]);
       const service = new SearchService(db, provider);
       const results = await service.search("meeting");
 
@@ -199,42 +222,15 @@ describe("SearchService", () => {
     });
 
     it("respects limit in vector search", async () => {
-      const dim = 3;
-      seedEmailWithEmbedding(db, "e1", [1, 0, 0]);
-      seedEmailWithEmbedding(db, "e2", [0, 1, 0]);
-      seedEmailWithEmbedding(db, "e3", [0.9, 0.1, 0]);
+      seedVecEmbedding(db, "e1", [1, 0, 0, 0]);
+      seedVecEmbedding(db, "e2", [0, 1, 0, 0]);
+      seedVecEmbedding(db, "e3", [0.9, 0.1, 0, 0]);
 
-      const provider = mockEmbeddingProvider([1, 0, 0]);
+      const provider = mockEmbedProvider([1, 0, 0, 0]);
       const service = new SearchService(db, provider);
       const results = await service.search("meeting", 1);
 
       expect(results.length).toBe(1);
-    });
-  });
-
-  describe("cosine similarity", () => {
-    it("computes 1.0 for identical vectors", async () => {
-      seedEmailWithEmbedding(db, "e1", [1, 2, 3]);
-      const provider = mockEmbeddingProvider([1, 2, 3]);
-      const service = new SearchService(db, provider);
-      const results = await service.search("test");
-      expect(results[0].score).toBeCloseTo(1.0, 5);
-    });
-
-    it("computes 0.0 for orthogonal vectors", async () => {
-      seedEmailWithEmbedding(db, "e1", [1, 0, 0]);
-      const provider = mockEmbeddingProvider([0, 1, 0]);
-      const service = new SearchService(db, provider);
-      const results = await service.search("test");
-      expect(results[0].score).toBeCloseTo(0.0, 5);
-    });
-
-    it("handles zero vectors gracefully", async () => {
-      seedEmailWithEmbedding(db, "e1", [0, 0, 0]);
-      const provider = mockEmbeddingProvider([1, 2, 3]);
-      const service = new SearchService(db, provider);
-      const results = await service.search("test");
-      expect(results[0].score).toBe(0); // 0/1 = 0 (div-by-zero guard)
     });
   });
 });

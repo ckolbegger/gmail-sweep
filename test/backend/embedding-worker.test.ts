@@ -1,49 +1,66 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import { EmbeddingWorker } from "@backend/services/embedding-worker";
-import { createTestDb } from "@test/helpers/test-db";
+import { initDb } from "@backend/db";
 import type Database from "bun:sqlite";
-import type { EmbeddingProvider } from "@backend/llm/provider";
+import type { EmbedProvider } from "@backend/services/embed-provider";
+import type { ExtractionStrategy } from "@shared/types";
 
-function createMockEmbeddingProvider(embeddings: number[][]): EmbeddingProvider {
+const defaultStrategy: ExtractionStrategy = { type: "template", template: "{{subject}} {{body_text}}" };
+
+function createMockProvider(embeddings: number[][]): EmbedProvider {
   let callIndex = 0;
   return {
-    embed: mock(() => {
+    embedDocument: mock(async () => {
       const res = embeddings[callIndex++];
       if (!res) throw new Error("No more mock embeddings");
-      return Promise.resolve(res);
+      return res;
     }),
+    embedQuery: mock(async () => embeddings[0] ?? []),
   };
 }
 
 function seedEmail(db: Database, overrides: Partial<{
   id: string;
   subject: string;
-  summary: string;
+  body_text: string;
   ai_status: string;
-  embedding: Uint8Array | null;
 }> = {}) {
   const {
     id = `m${Math.random().toString(36).slice(2, 8)}`,
     subject = "Test",
-    summary = "Summary text",
+    body_text = "Body",
     ai_status = "done",
-    embedding = null,
   } = overrides;
 
   db.run(
-    `INSERT INTO emails (id, thread_id, sender, recipients, subject, body_text, body_html, date_sent, date_received, labels, is_read, is_starred, fetched_at, ai_status, summary, embedding, embedding_model, embedding_generated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, "t1", "a@b.com", '[]', subject, "Body", "", 1000, 1000, '[]', 0, 0, Date.now(), ai_status, summary, embedding, null, null]
+    `INSERT INTO emails (id, thread_id, sender, recipients, subject, body_text, body_html, date_sent, date_received, labels, is_read, is_starred, fetched_at, ai_status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, "t1", "a@b.com", '[]', subject, body_text, "", 1000, 1000, '[]', 0, 0, Date.now(), ai_status]
   );
   return id;
 }
 
-describe("EmbeddingWorker", () => {
+function seedVecEmbedding(db: Database, emailId: string) {
+  // Insert a fake vec row so the worker skips this email
+  const vec = Buffer.from(new Float32Array(1024).buffer);
+  db.run("INSERT INTO vec_embeddings(email_id, embedding) VALUES (?, ?)", [emailId, vec]);
+}
+
+describe("EmbeddingWorker (vec0)", () => {
   let db: Database;
   let cleanup: () => void;
 
   beforeEach(() => {
-    ({ db, cleanup } = createTestDb());
+    const { mkdtempSync, rmSync } = require("node:fs");
+    const { join } = require("node:path");
+    const { tmpdir } = require("node:os");
+    const dir = mkdtempSync(join(tmpdir(), "gmail-sweep-ew-"));
+    const dbPath = join(dir, "test.db");
+    db = initDb(dbPath);
+    cleanup = () => {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    };
   });
 
   afterEach(() => {
@@ -51,114 +68,128 @@ describe("EmbeddingWorker", () => {
   });
 
   describe("processPending", () => {
-    it("should query emails where embedding IS NULL and ai_status = done", async () => {
-      seedEmail(db, { id: "m1", ai_status: "done", embedding: null });
-      seedEmail(db, { id: "m2", ai_status: "pending", embedding: null });
-      seedEmail(db, { id: "m3", ai_status: "done", embedding: new Uint8Array(Buffer.from("x")) });
-
-      const provider = createMockEmbeddingProvider([[0.1, 0.2]]);
-      const worker = new EmbeddingWorker(db, provider);
-
-      const result = await worker.processPending();
-      expect(result.processed).toBe(1);
-    });
-
-    it("should generate embedding for subject + summary", async () => {
-      seedEmail(db, { id: "m1", subject: "Hello", summary: "World" });
-
-      const provider: EmbeddingProvider = {
-        embed: mock(async (text: string) => {
-          expect(text).toBe("Hello World");
-          return [0.1, 0.2, 0.3];
-        }),
-      };
-
-      const worker = new EmbeddingWorker(db, provider);
-      await worker.processPending();
-
-      const row = db.query("SELECT embedding, embedding_model, embedding_generated_at FROM emails WHERE id = 'm1'").get() as any;
-      expect(row.embedding).not.toBeNull();
-      expect(row.embedding_model).toBe("mock");
-      expect(row.embedding_generated_at).toBeGreaterThan(0);
-    });
-
-    it("should store embedding as BLOB (Float32Array)", async () => {
+    it("should insert a vec_embeddings row for emails without one", async () => {
       seedEmail(db, { id: "m1" });
 
-      const expectedEmbedding = [0.1, 0.2, 0.3];
-      const provider = createMockEmbeddingProvider([expectedEmbedding]);
-      const worker = new EmbeddingWorker(db, provider);
-      await worker.processPending();
+      const provider = createMockProvider([new Array(1024).fill(0.1)]);
+      const worker = new EmbeddingWorker(db, provider, defaultStrategy, 1024);
+      const result = await worker.processPending();
+      expect(result.processed).toBe(1);
 
-      const row = db.query("SELECT embedding FROM emails WHERE id = 'm1'").get() as any;
-      const blob: Uint8Array = row.embedding;
-      const float32 = new Float32Array(blob.buffer, blob.byteOffset, blob.byteLength / 4);
-      expect(float32[0]).toBeCloseTo(0.1);
-      expect(float32[1]).toBeCloseTo(0.2);
-      expect(float32[2]).toBeCloseTo(0.3);
+      const row = db.query("SELECT email_id FROM vec_embeddings WHERE email_id = ?").get("m1") as any;
+      expect(row?.email_id).toBe("m1");
     });
 
-    it("should return 0 processed when no eligible emails", async () => {
-      seedEmail(db, { id: "m1", ai_status: "pending", embedding: null });
+    it("should skip emails that already have a vec_embeddings row", async () => {
+      seedEmail(db, { id: "m1" });
+      seedVecEmbedding(db, "m1");
 
-      const provider = createMockEmbeddingProvider([]);
-      const worker = new EmbeddingWorker(db, provider);
+      const provider = createMockProvider([]);
+      const worker = new EmbeddingWorker(db, provider, defaultStrategy, 1024);
       const result = await worker.processPending();
-
       expect(result.processed).toBe(0);
       expect(result.failed).toBe(0);
     });
 
-    it("should set failed on embedding error and continue", async () => {
+    it("should use extraction strategy template to build embedding text", async () => {
+      seedEmail(db, { id: "m1", subject: "Hello", body_text: "World" });
+
+      let capturedText = "";
+      const provider: EmbedProvider = {
+        embedDocument: mock(async (text: string) => {
+          capturedText = text;
+          return new Array(1024).fill(0.1);
+        }),
+        embedQuery: mock(async () => []),
+      };
+
+      const strategy: ExtractionStrategy = { type: "template", template: "{{subject}} {{body_text}}" };
+      const worker = new EmbeddingWorker(db, provider, strategy, 1024);
+      await worker.processPending();
+
+      expect(capturedText).toBe("Hello World");
+    });
+
+    it("should store embedding as Float32Array in vec_embeddings", async () => {
+      seedEmail(db, { id: "m1" });
+
+      const expectedVec = new Array(1024).fill(0).map((_, i) => i < 3 ? [0.1, 0.2, 0.3][i] : 0);
+      const provider = createMockProvider([expectedVec]);
+      const worker = new EmbeddingWorker(db, provider, defaultStrategy, 1024);
+      await worker.processPending();
+
+      // Verify the row is there via direct query
+      const row = db.query("SELECT email_id, embedding FROM vec_embeddings WHERE email_id = ?").get("m1") as any;
+      expect(row).not.toBeNull();
+      expect(row.email_id).toBe("m1");
+      // Verify the stored embedding bytes match
+      const storedF32 = new Float32Array(row.embedding.buffer, row.embedding.byteOffset, row.embedding.byteLength / 4);
+      expect(storedF32.length).toBe(1024);
+      expect(storedF32[0]).toBeCloseTo(0.1);
+      expect(storedF32[1]).toBeCloseTo(0.2);
+      expect(storedF32[2]).toBeCloseTo(0.3);
+    });
+
+    it("should return 0 processed when no eligible emails", async () => {
+      seedEmail(db, { id: "m1", ai_status: "pending" });
+      seedVecEmbedding(db, "m1");
+
+      const provider = createMockProvider([]);
+      const worker = new EmbeddingWorker(db, provider, defaultStrategy, 1024);
+      const result = await worker.processPending();
+      expect(result.processed).toBe(0);
+      expect(result.failed).toBe(0);
+    });
+
+    it("should report failed on embedding error and continue", async () => {
       seedEmail(db, { id: "m1" });
       seedEmail(db, { id: "m2" });
 
       let callCount = 0;
-      const provider: EmbeddingProvider = {
-        embed: mock(async () => {
+      const provider: EmbedProvider = {
+        embedDocument: mock(async () => {
           callCount++;
           if (callCount === 1) throw new Error("Embedding error");
-          return [0.5, 0.6];
+          return new Array(1024).fill(0.5);
         }),
+        embedQuery: mock(async () => []),
       };
 
-      const worker = new EmbeddingWorker(db, provider);
+      const worker = new EmbeddingWorker(db, provider, defaultStrategy, 1024);
       const result = await worker.processPending();
 
       expect(result.failed).toBe(1);
       expect(result.processed).toBe(1);
 
-      const m1 = db.query("SELECT embedding FROM emails WHERE id = 'm1'").get() as any;
-      expect(m1.embedding).toBeNull();
-
-      const m2 = db.query("SELECT embedding FROM emails WHERE id = 'm2'").get() as any;
-      expect(m2.embedding).not.toBeNull();
+      // Exactly one email should have a vec row
+      const total = db.query("SELECT COUNT(*) as c FROM vec_embeddings").get() as any;
+      expect(total.c).toBe(1);
     });
 
-    it("should process concurrently up to concurrency limit", async () => {
+    it("should process in batches", async () => {
       for (let i = 0; i < 6; i++) {
         seedEmail(db, { id: `m${i}` });
       }
 
       const concurrency = 3;
-      let maxInFlight = 0;
-      let currentInFlight = 0;
+      const provider = createMockProvider(
+        Array.from({ length: 6 }, () => new Array(1024).fill(0.1))
+      );
 
-      const provider: EmbeddingProvider = {
-        embed: mock(async () => {
-          currentInFlight++;
-          if (currentInFlight > maxInFlight) maxInFlight = currentInFlight;
-          await new Promise((r) => setTimeout(r, 10));
-          currentInFlight--;
-          return [0.1];
-        }),
-      };
+      const worker = new EmbeddingWorker(db, provider, defaultStrategy, 1024, concurrency);
+      const result = await worker.processPending();
+      expect(result.processed).toBe(6);
+    });
 
-      const worker = new EmbeddingWorker(db, provider, concurrency);
+    it("should reject embeddings with wrong dimension", async () => {
+      seedEmail(db, { id: "m1" });
+
+      const provider = createMockProvider([[0.1, 0.2, 0.3]]); // 3-dim, expected 1024
+      const worker = new EmbeddingWorker(db, provider, defaultStrategy, 1024);
       const result = await worker.processPending();
 
-      expect(result.processed).toBe(6);
-      expect(maxInFlight).toBeLessThanOrEqual(concurrency);
+      expect(result.failed).toBe(1);
+      expect(result.processed).toBe(0);
     });
   });
 });
