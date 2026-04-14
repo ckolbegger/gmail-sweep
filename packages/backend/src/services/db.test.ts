@@ -263,6 +263,40 @@ describe('database service', () => {
     });
   });
 
+  describe('starred filter on listEmails', () => {
+    it('listEmails filters by STARRED label', () => {
+      const db = createDb(':memory:');
+      db.upsertEmail({ id: 's', threadId: 't1', subject: 's', from: 'x',
+        date: '2025-01-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: ['INBOX', 'STARRED'], summary: null });
+      db.upsertEmail({ id: 'n', threadId: 't2', subject: 's', from: 'x',
+        date: '2025-01-02T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: ['INBOX'], summary: null });
+      expect(db.listEmails({ starred: true }).map(e => e.id)).toEqual(['s']);
+      db.close();
+    });
+  });
+
+  describe('hasActions filter on listEmails', () => {
+    it('listEmails filters by presence of actionItems in summary', () => {
+      const db = createDb(':memory:');
+      const withActions = { id: 'a', threadId: 't1', subject: 's', from: 'x',
+        date: '2025-01-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: ['INBOX'], summary: null };
+      const withoutActions = { id: 'b', threadId: 't2', subject: 's', from: 'x',
+        date: '2025-01-02T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: ['INBOX'], summary: null };
+      db.upsertEmail(withActions);
+      db.upsertEmail(withoutActions);
+      db.updateSummary('a', { description: 'desc', actionItems: ['do something'], keyPoints: [] });
+      db.updateSummary('b', { description: 'desc', actionItems: [], keyPoints: [] });
+      expect(db.listEmails({ hasActions: true }).map(e => e.id)).toEqual(['a']);
+      expect(db.listEmails({ hasActions: false }).map(e => e.id)).toContain('b');
+      expect(db.listEmails({ hasActions: false }).map(e => e.id)).not.toContain('a');
+      db.close();
+    });
+  });
+
   describe('removed_state soft-delete', () => {
     it('markEmailRemoved hides email from listEmails until cleared', () => {
       const db = createDb(':memory:');

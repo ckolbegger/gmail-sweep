@@ -13,4 +13,14 @@ describe('GET /status', () => {
     expect(res.json().version).toBeDefined();
     db.close();
   });
+
+  it('returns database=error when db ping fails', async () => {
+    const app = Fastify();
+    const db = createDb(':memory:');
+    db.close(); // close before ping so SELECT 1 throws
+    await app.register(statusRoutes, { db });
+    const res = await app.inject({ method: 'GET', url: '/status' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ status: 'ok', database: 'error' });
+  });
 });

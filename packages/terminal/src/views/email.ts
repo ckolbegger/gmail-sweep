@@ -5,7 +5,7 @@ export function buildEmailView(renderer: any) {
   const root = new BoxRenderable(renderer, {
     id: 'email-root',
     border: true,
-    title: ' Email  [Tab: toggle  Esc: back  a: archive  d: delete] ',
+    title: ' Email  [Tab: toggle  f: full-width  Esc: back  a: archive  d: delete] ',
     titleAlignment: 'left',
   });
   root.width = '100%';
@@ -35,10 +35,12 @@ export function buildEmailView(renderer: any) {
       '',
     ];
 
+    const prefix = state.detailFullWidth ? [] : header;
+
     if (state.previewMode === 'summary' && email.summary) {
       const s = email.summary;
       content.content = [
-        ...header,
+        ...prefix,
         '─── AI SUMMARY ───────────────────────────────',
         '',
         s.description,
@@ -50,9 +52,9 @@ export function buildEmailView(renderer: any) {
         ...s.keyPoints.map(k => `  • ${k}`),
       ].join('\n');
     } else if (state.previewMode === 'summary') {
-      content.content = [...header, '(generating summary…)'].join('\n');
+      content.content = [...prefix, '(generating summary…)'].join('\n');
     } else {
-      content.content = [...header, email.bodyText].join('\n');
+      content.content = [...prefix, email.bodyText].join('\n');
     }
   }
 

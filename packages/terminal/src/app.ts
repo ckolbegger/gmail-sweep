@@ -9,6 +9,7 @@ export interface AppState {
   view: View;
   openEmail: Email | null;
   previewMode: PreviewMode;
+  detailFullWidth: boolean;
   searchQuery: string;
   searchResults: Email[];
   searchScores: number[];
@@ -24,6 +25,7 @@ export function createAppState(): AppState {
     view: 'inbox',
     openEmail: null,
     previewMode: 'summary',
+    detailFullWidth: false,
     searchQuery: '',
     searchResults: [],
     searchScores: [],
@@ -94,4 +96,8 @@ export function updateOpenEmail(s: AppState, updated: Email): AppState {
     openEmail: s.openEmail?.id === updated.id ? updated : s.openEmail,
     emails: s.emails.map(e => e.id === updated.id ? updated : e),
   };
+}
+
+export function toggleDetailFullWidth(s: AppState): AppState {
+  return { ...s, detailFullWidth: !s.detailFullWidth };
 }

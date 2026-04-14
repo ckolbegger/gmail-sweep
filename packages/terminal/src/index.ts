@@ -3,7 +3,7 @@ import { createApiClient } from './api.js';
 import {
   createAppState, setEmails, nextEmail, prevEmail, selectEmail, togglePreview,
   archiveEmail, deleteEmail, backToInbox, startSearch, setSearchResults,
-  setStatus, setLoading, updateOpenEmail, setSummarizerStatus,
+  setStatus, setLoading, updateOpenEmail, setSummarizerStatus, toggleDetailFullWidth,
 } from './app.js';
 import type { AppState } from './app.js';
 import { buildInboxView } from './views/inbox.js';
@@ -166,6 +166,7 @@ renderer.addInputHandler((seq: string): boolean => {
     case 'email':
       if (seq === '\x1b') { state = backToInbox(state); render(); return true; }
       if (seq === '\t') { state = togglePreview(state); render(); return true; }
+      if (seq === 'f') { state = toggleDetailFullWidth(state); render(); return true; }
       if (seq === 'a' && state.openEmail) { triggerArchive(state.openEmail.id); return true; }
       if (seq === 'd' && state.openEmail) { triggerDelete(state.openEmail.id); return true; }
       if (seq === 'q') { renderer.destroy(); process.exit(0); }
