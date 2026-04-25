@@ -5,7 +5,7 @@ export function buildEmailView(renderer: any) {
   const root = new BoxRenderable(renderer, {
     id: 'email-root',
     border: true,
-    title: ' Email  [Tab: toggle  f: full-width  Esc: back  a: archive  d: delete] ',
+    title: ' Email  [Tab: toggle  f: full-width  Esc: back  e: archive  #: delete] ',
     titleAlignment: 'left',
   });
   root.width = '100%';

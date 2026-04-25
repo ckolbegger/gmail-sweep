@@ -155,8 +155,8 @@ renderer.addInputHandler((seq: string): boolean => {
       if (down) { state = nextEmail(state); render(); return true; }
       if (seq === '\r') { triggerOpenEmail(state.selectedIndex); return true; }
       if (seq === '\t') { state = togglePreview(state); render(); return true; }
-      if (seq === 'a') { const e = state.emails[state.selectedIndex]; if (e) triggerArchive(e.id); return true; }
-      if (seq === 'd') { const e = state.emails[state.selectedIndex]; if (e) triggerDelete(e.id); return true; }
+      if (seq === 'e') { const e = state.emails[state.selectedIndex]; if (e) triggerArchive(e.id); return true; }
+      if (seq === '#') { const e = state.emails[state.selectedIndex]; if (e) triggerDelete(e.id); return true; }
       if (seq === '/') { state = startSearch(state); searchView.focusInput(); render(); return true; }
       if (seq === 'r') { triggerSync(); return true; }
       if (seq === 'l' || seq === 'L') { loadEmailsAnchored(); return true; }
@@ -167,8 +167,8 @@ renderer.addInputHandler((seq: string): boolean => {
       if (seq === '\x1b') { state = backToInbox(state); render(); return true; }
       if (seq === '\t') { state = togglePreview(state); render(); return true; }
       if (seq === 'f') { state = toggleDetailFullWidth(state); render(); return true; }
-      if (seq === 'a' && state.openEmail) { triggerArchive(state.openEmail.id); return true; }
-      if (seq === 'd' && state.openEmail) { triggerDelete(state.openEmail.id); return true; }
+      if (seq === 'e' && state.openEmail) { triggerArchive(state.openEmail.id); return true; }
+      if (seq === '#' && state.openEmail) { triggerDelete(state.openEmail.id); return true; }
       if (seq === 'q') { renderer.destroy(); process.exit(0); }
       break;
 
@@ -179,11 +179,17 @@ renderer.addInputHandler((seq: string): boolean => {
   return false;
 });
 
+let lastProcessedCount = 0;
+
 async function pollSummarizerStatus(): Promise<void> {
   try {
     const status = await api.getSummarizerStatus();
     state = setSummarizerStatus(state, status);
     render();
+    if (status.processed > lastProcessedCount) {
+      lastProcessedCount = status.processed;
+      await loadEmails();
+    }
   } catch {
     // backend may not be ready yet — ignore
   }
