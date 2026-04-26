@@ -54,7 +54,8 @@ export function prevEmail(s: AppState): AppState {
 }
 
 export function selectEmail(s: AppState, index: number): AppState {
-  return { ...s, view: 'email', openEmail: s.emails[index] ?? null, previewMode: 'summary' };
+  const list = s.searchResults.length > 0 ? s.searchResults : s.emails;
+  return { ...s, view: 'email', openEmail: list[index] ?? null, previewMode: 'summary' };
 }
 
 export function togglePreview(s: AppState): AppState {
@@ -63,12 +64,16 @@ export function togglePreview(s: AppState): AppState {
 
 export function archiveEmail(s: AppState, id: string): AppState {
   const emails = s.emails.filter(e => e.id !== id);
-  return { ...s, emails, selectedIndex: Math.min(s.selectedIndex, Math.max(0, emails.length - 1)) };
+  const searchResults = s.searchResults.filter(e => e.id !== id);
+  const activeLength = s.searchResults.length > 0 ? searchResults.length : emails.length;
+  return { ...s, emails, searchResults, selectedIndex: Math.min(s.selectedIndex, Math.max(0, activeLength - 1)) };
 }
 
 export function deleteEmail(s: AppState, id: string): AppState {
   const emails = s.emails.filter(e => e.id !== id);
-  return { ...s, emails, selectedIndex: Math.min(s.selectedIndex, Math.max(0, emails.length - 1)) };
+  const searchResults = s.searchResults.filter(e => e.id !== id);
+  const activeLength = s.searchResults.length > 0 ? searchResults.length : emails.length;
+  return { ...s, emails, searchResults, selectedIndex: Math.min(s.selectedIndex, Math.max(0, activeLength - 1)) };
 }
 
 export function backToInbox(s: AppState): AppState {
@@ -83,8 +88,13 @@ export function startSearch(s: AppState): AppState {
   return { ...s, view: 'search', searchQuery: '', searchResults: [] };
 }
 
-export function setSearchResults(s: AppState, emails: Email[], scores: number[]): AppState {
-  return { ...s, searchResults: emails, searchScores: scores };
+export function setSearchResults(s: AppState, emails: Email[], scores: number[], query: string): AppState {
+  const selectedIndex = Math.min(s.selectedIndex, Math.max(0, emails.length - 1));
+  return { ...s, searchResults: emails, searchScores: scores, searchQuery: query, selectedIndex };
+}
+
+export function clearSearch(s: AppState): AppState {
+  return { ...s, searchResults: [], searchScores: [], searchQuery: '' };
 }
 
 export function setStatus(s: AppState, status: string): AppState {

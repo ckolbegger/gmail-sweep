@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   createAppState, setEmails, refreshEmails, nextEmail, prevEmail, selectEmail,
   togglePreview, archiveEmail, deleteEmail, backToInbox, startSearch,
-  setSearchResults, setStatus, setSummarizerStatus, toggleDetailFullWidth, showHelp,
+  setSearchResults, setStatus, setSummarizerStatus, toggleDetailFullWidth, showHelp, clearSearch,
 } from './app.js';
 import type { Email, SummarizerStatus } from '@gmail-sweep/shared';
 
@@ -161,5 +161,62 @@ describe('app state', () => {
   it('backToInbox from help returns to inbox', () => {
     const s = backToInbox(showHelp(createAppState()));
     expect(s.view).toBe('inbox');
+  });
+
+  it('setSearchResults stores query and clamps selectedIndex', () => {
+    let s = setEmails(createAppState(), [makeEmail('a'), makeEmail('b'), makeEmail('c')]);
+    s = nextEmail(nextEmail(s)); // index 2
+    s = setSearchResults(s, [makeEmail('x')], [0.9], 'test query');
+    expect(s.searchResults).toHaveLength(1);
+    expect(s.searchQuery).toBe('test query');
+    expect(s.selectedIndex).toBe(0);
+  });
+
+  it('clearSearch resets search state', () => {
+    let s = setSearchResults(createAppState(), [makeEmail('x')], [0.9], 'hello');
+    s = clearSearch(s);
+    expect(s.searchResults).toHaveLength(0);
+    expect(s.searchScores).toHaveLength(0);
+    expect(s.searchQuery).toBe('');
+  });
+
+  it('selectEmail opens from searchResults when filter is active', () => {
+    const inbox = makeEmail('inbox');
+    const result = makeEmail('result');
+    let s = setEmails(createAppState(), [inbox]);
+    s = setSearchResults(s, [result], [0.9], 'q');
+    s = selectEmail(s, 0);
+    expect(s.openEmail?.id).toBe('result');
+  });
+
+  it('selectEmail opens from emails when no filter', () => {
+    const inbox = makeEmail('inbox');
+    let s = setEmails(createAppState(), [inbox]);
+    s = selectEmail(s, 0);
+    expect(s.openEmail?.id).toBe('inbox');
+  });
+
+  it('archiveEmail removes from both emails and searchResults', () => {
+    let s = setEmails(createAppState(), [makeEmail('a'), makeEmail('b')]);
+    s = setSearchResults(s, [makeEmail('a'), makeEmail('b')], [1, 0.9], 'q');
+    s = archiveEmail(s, 'a');
+    expect(s.emails.map(e => e.id)).toEqual(['b']);
+    expect(s.searchResults.map(e => e.id)).toEqual(['b']);
+  });
+
+  it('deleteEmail removes from both emails and searchResults', () => {
+    let s = setEmails(createAppState(), [makeEmail('a'), makeEmail('b')]);
+    s = setSearchResults(s, [makeEmail('a'), makeEmail('b')], [1, 0.9], 'q');
+    s = deleteEmail(s, 'a');
+    expect(s.emails.map(e => e.id)).toEqual(['b']);
+    expect(s.searchResults.map(e => e.id)).toEqual(['b']);
+  });
+
+  it('archiveEmail clamps index against active list when filtering', () => {
+    let s = setEmails(createAppState(), [makeEmail('a'), makeEmail('b')]);
+    s = setSearchResults(s, [makeEmail('a')], [1], 'q');
+    s = { ...s, selectedIndex: 0 };
+    s = archiveEmail(s, 'a');
+    expect(s.selectedIndex).toBe(0);
   });
 });
