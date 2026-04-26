@@ -26,7 +26,7 @@ export function buildInboxView(renderer: any) {
   const previewPane = new BoxRenderable(renderer, {
     id: 'preview-pane',
     border: true,
-    title: ' Preview  [Tab: toggle summary/full text] ',
+    title: '',
     titleAlignment: 'left',
   });
   previewPane.flexGrow = 1;
@@ -88,6 +88,10 @@ export function buildInboxView(renderer: any) {
   }
 
   function renderPreview(state: AppState): void {
+    const summary  = state.previewMode === 'summary'  ? '[summary]' : ' summary ';
+    const fulltext = state.previewMode === 'fulltext' ? '[full text]' : ' full text ';
+    previewPane.title = ` Preview  Tab:${summary}/${fulltext} `;
+
     const email = state.emails[state.selectedIndex];
     if (!email) {
       previewText.content = '';

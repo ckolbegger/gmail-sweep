@@ -5,7 +5,7 @@ export function buildEmailView(renderer: any) {
   const root = new BoxRenderable(renderer, {
     id: 'email-root',
     border: true,
-    title: ' Email  [Tab: toggle  f: full-width  Esc: back  e: archive  #: delete] ',
+    title: '',
     titleAlignment: 'left',
   });
   root.width = '100%';
@@ -24,6 +24,10 @@ export function buildEmailView(renderer: any) {
   function render(state: AppState): void {
     const email = state.openEmail;
     if (!email) return;
+
+    const summary  = state.previewMode === 'summary'  ? '[summary]' : ' summary ';
+    const fulltext = state.previewMode === 'fulltext' ? '[full text]' : ' full text ';
+    root.title = ` Email  Tab:${summary}/${fulltext}  f: full-width  Esc: back  e: archive  #: delete `;
 
     scroll.scrollTo(0);
 

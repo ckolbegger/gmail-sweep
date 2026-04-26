@@ -43,6 +43,22 @@ describe('app state', () => {
     expect(s.selectedIndex).toBe(0);
   });
 
+  it('refreshEmails updates openEmail if it is in the new list', () => {
+    const old = makeEmail('a');
+    let s = setEmails(createAppState(), [old]);
+    s = { ...s, openEmail: old };
+    const updated = { ...old, summary: { description: 'summary', actionItems: [], keyPoints: [] } };
+    s = refreshEmails(s, [updated]);
+    expect(s.openEmail?.summary?.description).toBe('summary');
+  });
+
+  it('refreshEmails leaves openEmail null if no email is open', () => {
+    let s = setEmails(createAppState(), [makeEmail('a')]);
+    const updated = makeEmail('a');
+    s = refreshEmails(s, [updated]);
+    expect(s.openEmail).toBeNull();
+  });
+
   it('nextEmail increments, capped at last index', () => {
     let s = setEmails(createAppState(), [makeEmail('a'), makeEmail('b'), makeEmail('c')]);
     s = nextEmail(s);
