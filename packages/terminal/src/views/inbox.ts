@@ -33,10 +33,15 @@ export function buildInboxView(renderer: any) {
   previewPane.height = '100%';
   previewPane.overflow = 'hidden';
 
+  const previewScroll = new ScrollBoxRenderable(renderer, { id: 'preview-scroll', scrollY: true });
+  previewScroll.width = '100%';
+  previewScroll.height = '100%';
+
   const previewText = new TextRenderable(renderer, { id: 'preview-text', content: '' });
   previewText.width = '100%';
   previewText.padding = 1;
-  previewPane.add(previewText);
+  previewScroll.add(previewText);
+  previewPane.add(previewScroll);
 
   root.add(listPane);
   root.add(previewPane);
@@ -129,7 +134,11 @@ export function buildInboxView(renderer: any) {
     }
   }
 
-  return { root, render };
+  const SCROLL_STEP = 3;
+  function scrollUp()   { previewScroll.scrollTo(Math.max(0, previewScroll.scrollTop - SCROLL_STEP)); }
+  function scrollDown() { previewScroll.scrollTo(previewScroll.scrollTop + SCROLL_STEP); }
+
+  return { root, render, scrollUp, scrollDown };
 }
 
 function truncate(s: string, max: number): string {

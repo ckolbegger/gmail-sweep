@@ -157,6 +157,8 @@ renderer.addInputHandler((seq: string): boolean => {
       if (seq === '\t') { state = togglePreview(state); render(); return true; }
       if (seq === 'e') { const e = state.emails[state.selectedIndex]; if (e) triggerArchive(e.id); return true; }
       if (seq === '#') { const e = state.emails[state.selectedIndex]; if (e) triggerDelete(e.id); return true; }
+      if (seq === '[') { inboxView.scrollUp(); renderer.requestRender(); return true; }
+      if (seq === ']') { inboxView.scrollDown(); renderer.requestRender(); return true; }
       if (seq === '/') { state = startSearch(state); searchView.focusInput(); render(); return true; }
       if (seq === 'r') { triggerSync(); return true; }
       if (seq === 'l' || seq === 'L') { loadEmailsAnchored(); return true; }
@@ -167,6 +169,8 @@ renderer.addInputHandler((seq: string): boolean => {
       if (seq === '\x1b') { state = backToInbox(state); render(); return true; }
       if (seq === '\t') { state = togglePreview(state); render(); return true; }
       if (seq === 'f') { state = toggleDetailFullWidth(state); render(); return true; }
+      if (seq === '[') { emailView.scrollUp(); renderer.requestRender(); return true; }
+      if (seq === ']') { emailView.scrollDown(); renderer.requestRender(); return true; }
       if (seq === 'e' && state.openEmail) { triggerArchive(state.openEmail.id); return true; }
       if (seq === '#' && state.openEmail) { triggerDelete(state.openEmail.id); return true; }
       if (seq === 'q') { renderer.destroy(); process.exit(0); }

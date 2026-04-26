@@ -62,5 +62,9 @@ export function buildEmailView(renderer: any) {
     }
   }
 
-  return { root, render };
+  const SCROLL_STEP = 3;
+  function scrollUp()   { scroll.scrollTo(Math.max(0, scroll.scrollTop - SCROLL_STEP)); }
+  function scrollDown() { scroll.scrollTo(scroll.scrollTop + SCROLL_STEP); }
+
+  return { root, render, scrollUp, scrollDown };
 }
