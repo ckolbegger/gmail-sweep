@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   createAppState, setEmails, refreshEmails, nextEmail, prevEmail, selectEmail,
   togglePreview, archiveEmail, deleteEmail, backToInbox, startSearch,
-  setSearchResults, setStatus, setSummarizerStatus, toggleDetailFullWidth,
+  setSearchResults, setStatus, setSummarizerStatus, toggleDetailFullWidth, showHelp,
 } from './app.js';
 import type { Email, SummarizerStatus } from '@gmail-sweep/shared';
 
@@ -151,5 +151,15 @@ describe('app state', () => {
     expect(s.detailFullWidth).toBe(true);
     s = toggleDetailFullWidth(s);
     expect(s.detailFullWidth).toBe(false);
+  });
+
+  it('showHelp sets view to help', () => {
+    const s = showHelp(createAppState());
+    expect(s.view).toBe('help');
+  });
+
+  it('backToInbox from help returns to inbox', () => {
+    const s = backToInbox(showHelp(createAppState()));
+    expect(s.view).toBe('inbox');
   });
 });

@@ -3,12 +3,13 @@ import { createApiClient } from './api.js';
 import {
   createAppState, setEmails, refreshEmails, nextEmail, prevEmail, selectEmail, togglePreview,
   archiveEmail, deleteEmail, backToInbox, startSearch, setSearchResults,
-  setStatus, setLoading, updateOpenEmail, setSummarizerStatus, toggleDetailFullWidth,
+  setStatus, setLoading, updateOpenEmail, setSummarizerStatus, toggleDetailFullWidth, showHelp,
 } from './app.js';
 import type { AppState } from './app.js';
 import { buildInboxView } from './views/inbox.js';
 import { buildEmailView } from './views/email.js';
 import { buildSearchView } from './views/search.js';
+import { buildHelpView } from './views/help.js';
 
 const BACKEND_URL = process.env['BACKEND_URL'] ?? 'http://localhost:3141';
 const api = createApiClient(BACKEND_URL);
@@ -24,6 +25,7 @@ let state: AppState = createAppState();
 const inboxView = buildInboxView(renderer);
 const emailView = buildEmailView(renderer);
 const searchView = buildSearchView(renderer, triggerSearch);
+const helpView = buildHelpView(renderer);
 
 let activeRoot: any = null;
 function showView(viewRoot: any): void {
@@ -39,6 +41,9 @@ function render(): void {
   } else if (state.view === 'email') {
     showView(emailView.root);
     emailView.render(state);
+  } else if (state.view === 'help') {
+    showView(helpView.root);
+    helpView.render();
   } else {
     showView(searchView.root);
     searchView.render(state);
@@ -162,6 +167,7 @@ renderer.addInputHandler((seq: string): boolean => {
       if (seq === '/') { state = startSearch(state); searchView.focusInput(); render(); return true; }
       if (seq === 'r') { triggerSync(); return true; }
       if (seq === 'l' || seq === 'L') { loadEmailsAnchored(); return true; }
+      if (seq === '?') { state = showHelp(state); render(); return true; }
       if (seq === 'q') { renderer.destroy(); process.exit(0); }
       break;
 
@@ -173,11 +179,17 @@ renderer.addInputHandler((seq: string): boolean => {
       if (seq === ']') { emailView.scrollDown(); renderer.requestRender(); return true; }
       if (seq === 'e' && state.openEmail) { triggerArchive(state.openEmail.id); return true; }
       if (seq === '#' && state.openEmail) { triggerDelete(state.openEmail.id); return true; }
+      if (seq === '?') { state = showHelp(state); render(); return true; }
       if (seq === 'q') { renderer.destroy(); process.exit(0); }
       break;
 
     case 'search':
       if (seq === '\x1b') { state = backToInbox(state); render(); return true; }
+      break;
+
+    case 'help':
+      if (seq === '\x1b' || seq === '?') { state = backToInbox(state); render(); return true; }
+      if (seq === 'q') { renderer.destroy(); process.exit(0); }
       break;
   }
   return false;

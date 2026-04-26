@@ -1,6 +1,6 @@
 import type { Email, SummarizerStatus } from '@gmail-sweep/shared';
 
-export type View = 'inbox' | 'email' | 'search';
+export type View = 'inbox' | 'email' | 'search' | 'help';
 export type PreviewMode = 'summary' | 'fulltext';
 
 export interface AppState {
@@ -73,6 +73,10 @@ export function deleteEmail(s: AppState, id: string): AppState {
 
 export function backToInbox(s: AppState): AppState {
   return { ...s, view: 'inbox', openEmail: null };
+}
+
+export function showHelp(s: AppState): AppState {
+  return { ...s, view: 'help' };
 }
 
 export function startSearch(s: AppState): AppState {
