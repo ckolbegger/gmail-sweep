@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  createAppState, setEmails, nextEmail, prevEmail, selectEmail,
+  createAppState, setEmails, refreshEmails, nextEmail, prevEmail, selectEmail,
   togglePreview, archiveEmail, deleteEmail, backToInbox, startSearch,
   setSearchResults, setStatus, setSummarizerStatus, toggleDetailFullWidth,
 } from './app.js';
@@ -26,6 +26,20 @@ describe('app state', () => {
   it('setEmails replaces list and resets selection to 0', () => {
     const s = setEmails(createAppState(), [makeEmail('a'), makeEmail('b')]);
     expect(s.emails).toHaveLength(2);
+    expect(s.selectedIndex).toBe(0);
+  });
+
+  it('refreshEmails replaces list and preserves selectedIndex', () => {
+    let s = setEmails(createAppState(), [makeEmail('a'), makeEmail('b'), makeEmail('c')]);
+    s = nextEmail(nextEmail(s)); // move to index 2
+    s = refreshEmails(s, [makeEmail('a'), makeEmail('b'), makeEmail('c')]);
+    expect(s.selectedIndex).toBe(2);
+  });
+
+  it('refreshEmails clamps selectedIndex if new list is shorter', () => {
+    let s = setEmails(createAppState(), [makeEmail('a'), makeEmail('b'), makeEmail('c')]);
+    s = nextEmail(nextEmail(s)); // index 2
+    s = refreshEmails(s, [makeEmail('a')]);
     expect(s.selectedIndex).toBe(0);
   });
 

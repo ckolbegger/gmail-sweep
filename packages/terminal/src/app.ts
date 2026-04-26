@@ -39,6 +39,10 @@ export function setEmails(s: AppState, emails: Email[]): AppState {
   return { ...s, emails, selectedIndex: 0 };
 }
 
+export function refreshEmails(s: AppState, emails: Email[]): AppState {
+  return { ...s, emails, selectedIndex: Math.min(s.selectedIndex, Math.max(0, emails.length - 1)) };
+}
+
 export function nextEmail(s: AppState): AppState {
   if (s.emails.length === 0) return s;
   return { ...s, selectedIndex: Math.min(s.selectedIndex + 1, s.emails.length - 1) };

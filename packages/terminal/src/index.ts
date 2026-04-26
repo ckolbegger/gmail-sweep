@@ -1,7 +1,7 @@
 import { createCliRenderer } from '@opentui/core';
 import { createApiClient } from './api.js';
 import {
-  createAppState, setEmails, nextEmail, prevEmail, selectEmail, togglePreview,
+  createAppState, setEmails, refreshEmails, nextEmail, prevEmail, selectEmail, togglePreview,
   archiveEmail, deleteEmail, backToInbox, startSearch, setSearchResults,
   setStatus, setLoading, updateOpenEmail, setSummarizerStatus, toggleDetailFullWidth,
 } from './app.js';
@@ -188,7 +188,9 @@ async function pollSummarizerStatus(): Promise<void> {
     render();
     if (status.processed > lastProcessedCount) {
       lastProcessedCount = status.processed;
-      await loadEmails();
+      const { emails } = await api.listEmails({ limit: 200 });
+      state = refreshEmails(state, emails);
+      render();
     }
   } catch {
     // backend may not be ready yet — ignore
