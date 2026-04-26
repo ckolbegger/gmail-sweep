@@ -52,18 +52,26 @@ export function buildInboxView(renderer: any) {
   }
 
   function renderList(state: AppState): void {
-    const s = state.summarizerStatus;
-    const summaryInfo = s?.status === 'running'
-      ? `  ·  Summarising: ${s.processed}/${s.pending}`
-      : '';
-    listPane.title = ` Inbox${summaryInfo} `;
+    const isFiltering = state.searchResults.length > 0;
+    const activeEmails = isFiltering ? state.searchResults : state.emails;
+
+    if (isFiltering) {
+      listPane.title = ` Search: "${state.searchQuery}"  [/: clear] `;
+    } else {
+      const s = state.summarizerStatus;
+      const summaryInfo = s?.status === 'running'
+        ? `  ·  Summarising: ${s.processed}/${s.pending}`
+        : '';
+      listPane.title = ` Inbox${summaryInfo} `;
+    }
 
     for (const child of listScroll.getChildren()) {
       listScroll.remove((child as any).id);
     }
 
-    if (state.emails.length === 0) {
-      const empty = new TextRenderable(renderer, { id: 'list-empty', content: '  (no emails — press r to sync)' });
+    if (activeEmails.length === 0) {
+      const msg = isFiltering ? '  (no results)' : '  (no emails — press r to sync)';
+      const empty = new TextRenderable(renderer, { id: 'list-empty', content: msg });
       listScroll.add(empty);
       return;
     }
@@ -71,7 +79,7 @@ export function buildInboxView(renderer: any) {
     const listPaneWidth = Math.floor((process.stdout.columns ?? 120) * 0.35);
     const subjectWidth = Math.max(10, listPaneWidth - 45);
 
-    state.emails.forEach((email, i) => {
+    activeEmails.forEach((email, i) => {
       const selected = i === state.selectedIndex;
       const date = email.date.slice(0, 10);
       const from = truncate(email.from, 20);
@@ -87,9 +95,7 @@ export function buildInboxView(renderer: any) {
       listScroll.add(item);
     });
 
-    if (state.emails.length > 0) {
-      setTimeout(() => listScroll.scrollChildIntoView(`list-item-${state.selectedIndex}`), 0);
-    }
+    setTimeout(() => listScroll.scrollChildIntoView(`list-item-${state.selectedIndex}`), 0);
   }
 
   function renderPreview(state: AppState): void {
@@ -97,7 +103,8 @@ export function buildInboxView(renderer: any) {
     const fulltext = state.previewMode === 'fulltext' ? '[full text]' : ' full text ';
     previewPane.title = ` Preview  Tab:${summary}/${fulltext} `;
 
-    const email = state.emails[state.selectedIndex];
+    const activeEmails = state.searchResults.length > 0 ? state.searchResults : state.emails;
+    const email = activeEmails[state.selectedIndex];
     if (!email) {
       previewText.content = '';
       return;
