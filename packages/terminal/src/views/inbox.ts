@@ -56,7 +56,7 @@ export function buildInboxView(renderer: any) {
     const activeEmails = isFiltering ? state.searchResults : state.emails;
 
     if (isFiltering) {
-      listPane.title = ` Search: "${state.searchQuery}"  [/: clear] `;
+      listPane.title = ` /${truncate(state.searchQuery, 16)}/ `;
     } else {
       const s = state.summarizerStatus;
       const summaryInfo = s?.status === 'running'

@@ -2,7 +2,7 @@ import { createCliRenderer } from '@opentui/core';
 import { createApiClient } from './api.js';
 import {
   createAppState, setEmails, refreshEmails, nextEmail, prevEmail, selectEmail, togglePreview,
-  archiveEmail, deleteEmail, backToInbox, startSearch, setSearchResults,
+  archiveEmail, deleteEmail, backToInbox, startSearch, setSearchResults, clearSearch,
   setStatus, setLoading, updateOpenEmail, setSummarizerStatus, toggleDetailFullWidth, showHelp,
 } from './app.js';
 import type { AppState } from './app.js';
@@ -24,7 +24,7 @@ let state: AppState = createAppState();
 
 const inboxView = buildInboxView(renderer);
 const emailView = buildEmailView(renderer);
-const searchView = buildSearchView(renderer, triggerSearch);
+const searchView = buildSearchView(renderer);
 const helpView = buildHelpView(renderer);
 
 let activeRoot: any = null;
@@ -124,9 +124,11 @@ async function triggerSearch(query: string): Promise<void> {
   render();
   try {
     const { emails, scores } = await api.search(query);
-    state = setSearchResults(state, emails, scores);
+    state = setSearchResults(state, emails, scores, query);
+    state = backToInbox(state);
     state = setStatus(state, `${emails.length} results for "${query}"`);
   } catch (err) {
+    state = backToInbox(state);
     state = setStatus(state, `Search error: ${(err as Error).message}`);
   }
   state = setLoading(state, false);
@@ -164,7 +166,17 @@ renderer.addInputHandler((seq: string): boolean => {
       if (seq === '#') { const e = state.emails[state.selectedIndex]; if (e) triggerDelete(e.id); return true; }
       if (seq === '[') { inboxView.scrollUp(); renderer.requestRender(); return true; }
       if (seq === ']') { inboxView.scrollDown(); renderer.requestRender(); return true; }
-      if (seq === '/') { state = startSearch(state); searchView.focusInput(); render(); return true; }
+      if (seq === '/') {
+        if (state.searchResults.length > 0) {
+          state = clearSearch(state);
+          render();
+        } else {
+          state = startSearch(state);
+          render();
+          searchView.focusInput();
+        }
+        return true;
+      }
       if (seq === 'r') { triggerSync(); return true; }
       if (seq === 'l' || seq === 'L') { loadEmailsAnchored(); return true; }
       if (seq === '?') { state = showHelp(state); render(); return true; }
@@ -185,6 +197,7 @@ renderer.addInputHandler((seq: string): boolean => {
 
     case 'search':
       if (seq === '\x1b') { state = backToInbox(state); render(); return true; }
+      if (seq === '\r') { const q = searchView.getQuery(); if (q) triggerSearch(q); return true; }
       break;
 
     case 'help':
