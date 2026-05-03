@@ -741,6 +741,25 @@ describe("ai provider probe test isolation")
 - [x] **Step 3: Run AI probe tests and backend typecheck**
 - [x] **Step 4: Commit fix**
 
+### Task 1.6 Bug: Finish Hermetic Isolation For AI Probe Route Selection Tests
+
+**Bug:** The provider-selection app-route test can still construct OpenAI and Anthropic providers without an isolated AI provider environment. If normal `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` values exist in `process.env`, the test can instantiate real SDK clients and attempt network calls.
+
+**Files:**
+- Modify: `tests/integration/ai_probe_fake.test.ts`
+
+**Test Inventory:**
+```text
+describe("ai provider probe test isolation")
+  "it should isolate OpenAI provider-selection route tests from process.env"
+  "it should isolate Anthropic provider-selection route tests from process.env"
+```
+
+- [x] **Step 1: Add or adjust provider-selection route tests to pass isolated `aiProviderEnv`**
+- [x] **Step 2: Keep assertions for `provider: "openai"` / `provider: "anthropic"` and `status: "not-configured"`**
+- [x] **Step 3: Run AI probe tests and backend typecheck**
+- [x] **Step 4: Commit fix**
+
 ### Task 1.7: TUI Boot Shell Starts Backend
 
 **Files:**

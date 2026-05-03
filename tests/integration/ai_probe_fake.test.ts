@@ -20,8 +20,14 @@ function configFor(ai: AppConfig["ai"]): AppConfig {
 describe("ai provider probes", () => {
   test("it should select the configured fake, OpenAI, or Anthropic provider", async () => {
     const fake = createApp({ config: configFor({ provider: "fakeAI", model: "fake-summary" }) });
-    const openai = createApp({ config: configFor({ provider: "openai", model: "gpt-test" }) });
-    const anthropic = createApp({ config: configFor({ provider: "anthropic", model: "claude-test" }) });
+    const openai = createApp({
+      config: configFor({ provider: "openai", model: "gpt-test" }),
+      aiProviderEnv: {},
+    });
+    const anthropic = createApp({
+      config: configFor({ provider: "anthropic", model: "claude-test" }),
+      aiProviderEnv: {},
+    });
 
     const fakeResponse = await fake.request("/providers/ai/probe", { method: "POST" });
     const openaiResponse = await openai.request("/providers/ai/probe", { method: "POST" });
