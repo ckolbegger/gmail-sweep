@@ -24,6 +24,7 @@ export type BodyAuditSource = "text/plain" | "text/html" | "none";
 export type BodyAuditReason =
   | "plain-text-present"
   | "html-converted"
+  | "html-fallback"
   | "empty-body"
   | "unsupported-mime";
 

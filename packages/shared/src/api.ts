@@ -19,13 +19,22 @@ export type EmailMutation =
   | "unimportant";
 
 export type ApiRequest =
+  | { type: "getStatus" }
+  | { type: "getAuthStatus" }
+  | { type: "startAuth" }
+  | { type: "authCallback"; code: string; state?: string }
+  | { type: "listAccounts" }
+  | { type: "setActiveAccount"; accountId: string }
   | { type: "startSync" }
+  | { type: "getSyncStatus" }
   | StartBackfillRequest & { type: "startBackfill" }
+  | { type: "getBackfillStatus" }
   | { type: "listEmails"; limit?: number; pageToken?: string | null }
   | { type: "getEmail"; id: string }
   | { type: "mutateEmail"; id: string; mutation: EmailMutation }
   | { type: "getSummary"; id: string }
   | { type: "createSummary"; id: string }
+  | { type: "getSummariesStatus" }
   | { type: "searchEmails"; query: SearchQuery; limit?: number }
   | { type: "probeProvider"; provider: "gmail" | "ai" };
 
