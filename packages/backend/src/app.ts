@@ -12,10 +12,13 @@ import { createAuthRoutes, type AuthRouteOptions } from "./routes/auth";
 import { createProviderRoutes } from "./routes/providers";
 import { createStatusRoute } from "./routes/status";
 
+type Env = Record<string, string | undefined>;
+
 export interface CreateAppOptions {
   config?: AppConfig;
   gmailProvider?: GmailProvider;
   aiProvider?: AiProvider;
+  aiProviderEnv?: Env;
   auth?: Omit<AuthRouteOptions, "config">;
 }
 
@@ -23,7 +26,7 @@ export function createApp(options: CreateAppOptions = {}) {
   const config = options.config ?? loadConfig();
   const app = new Hono();
   const gmailProvider = options.gmailProvider ?? createGmailProvider(config);
-  const aiProvider = options.aiProvider ?? createAiProvider(config);
+  const aiProvider = options.aiProvider ?? createAiProvider(config, options.aiProviderEnv);
 
   app.route("/", createStatusRoute(config));
   app.route("/", createAuthRoutes({ config, ...options.auth }));
@@ -40,14 +43,14 @@ function createGmailProvider(config: AppConfig): GmailProvider {
   return createGoogleGmailProvider(config);
 }
 
-function createAiProvider(config: AppConfig): AiProvider {
+function createAiProvider(config: AppConfig, env?: Env): AiProvider {
   if (config.ai.provider === "fakeAI") {
     return createFakeAiProvider(config);
   }
 
   if (config.ai.provider === "openai") {
-    return createOpenAiProvider(config);
+    return createOpenAiProvider(config, env);
   }
 
-  return createAnthropicAiProvider(config);
+  return createAnthropicAiProvider(config, env);
 }

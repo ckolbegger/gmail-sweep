@@ -720,6 +720,27 @@ git add packages/backend/src/providers/ai packages/backend/src/routes/providers.
 git commit -m "feat: add AI provider probes"
 ```
 
+### Task 1.6 Bug: Make AI Probe App-Route Tests Hermetic
+
+**Bug:** The OpenAI/Anthropic app-route tests can rely on the real process environment. If `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` is set, tests that expect missing credentials may instantiate real SDK clients and attempt external calls.
+
+**Files:**
+- Modify: `tests/integration/ai_probe_fake.test.ts`
+- Modify: `packages/backend/src/app.ts` only if injection support is needed
+
+**Test Inventory:**
+```text
+describe("ai provider probe test isolation")
+  "it should keep OpenAI missing-credentials route tests independent of process.env"
+  "it should keep Anthropic missing-credentials route tests independent of process.env"
+  "it should not construct real SDK clients in app-route tests that expect BLOCKED"
+```
+
+- [x] **Step 1: Add or adjust tests to force missing test-only env var names**
+- [x] **Step 2: Ensure route-level tests cannot use real `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` from the process**
+- [x] **Step 3: Run AI probe tests and backend typecheck**
+- [x] **Step 4: Commit fix**
+
 ### Task 1.7: TUI Boot Shell Starts Backend
 
 **Files:**

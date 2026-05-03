@@ -36,8 +36,20 @@ describe("ai provider probes", () => {
   });
 
   test("it should return BLOCKED when required provider credentials are missing", async () => {
-    const openai = createApp({ config: configFor({ provider: "openai", model: "gpt-test" }) });
-    const anthropic = createApp({ config: configFor({ provider: "anthropic", model: "claude-test" }) });
+    const openai = createApp({
+      config: configFor({
+        provider: "openai",
+        model: "gpt-test",
+        apiKeyEnv: "__TEST_MISSING_OPENAI_API_KEY__",
+      }),
+    });
+    const anthropic = createApp({
+      config: configFor({
+        provider: "anthropic",
+        model: "claude-test",
+        apiKeyEnv: "__TEST_MISSING_ANTHROPIC_API_KEY__",
+      }),
+    });
 
     const openaiBody = await openai.request("/providers/ai/probe", { method: "POST" }).then((r) => r.json());
     const anthropicBody = await anthropic.request("/providers/ai/probe", { method: "POST" }).then((r) => r.json());
@@ -45,12 +57,48 @@ describe("ai provider probes", () => {
     expect(openaiBody).toMatchObject({
       provider: "openai",
       status: "not-configured",
-      message: "Missing OPENAI_API_KEY",
+      message: "Missing __TEST_MISSING_OPENAI_API_KEY__",
     });
     expect(anthropicBody).toMatchObject({
       provider: "anthropic",
       status: "not-configured",
-      message: "Missing ANTHROPIC_API_KEY",
+      message: "Missing __TEST_MISSING_ANTHROPIC_API_KEY__",
+    });
+  });
+
+  test("it should keep OpenAI missing-credentials route tests independent of process.env", async () => {
+    await withTemporaryEnv("OPENAI_API_KEY", "test-openai-key-that-must-not-be-used", async () => {
+      const app = createApp({
+        config: configFor({ provider: "openai", model: "gpt-test" }),
+        aiProviderEnv: {},
+      });
+
+      const response = await app.request("/providers/ai/probe", { method: "POST" });
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        provider: "openai",
+        status: "not-configured",
+        message: "Missing OPENAI_API_KEY",
+      });
+    });
+  });
+
+  test("it should keep Anthropic missing-credentials route tests independent of process.env", async () => {
+    await withTemporaryEnv("ANTHROPIC_API_KEY", "test-anthropic-key-that-must-not-be-used", async () => {
+      const app = createApp({
+        config: configFor({ provider: "anthropic", model: "claude-test" }),
+        aiProviderEnv: {},
+      });
+
+      const response = await app.request("/providers/ai/probe", { method: "POST" });
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        provider: "anthropic",
+        status: "not-configured",
+        message: "Missing ANTHROPIC_API_KEY",
+      });
     });
   });
 
@@ -142,3 +190,18 @@ describe("ai provider probes", () => {
     });
   });
 });
+
+async function withTemporaryEnv(name: string, value: string, run: () => Promise<void>): Promise<void> {
+  const previous = process.env[name];
+  process.env[name] = value;
+
+  try {
+    await run();
+  } finally {
+    if (previous === undefined) {
+      delete process.env[name];
+    } else {
+      process.env[name] = previous;
+    }
+  }
+}
