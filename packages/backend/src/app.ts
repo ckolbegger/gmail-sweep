@@ -4,7 +4,9 @@ import { loadConfig } from "./config/load";
 import { createFakeAiProvider } from "./providers/ai/fake";
 import type { AiProvider } from "./providers/ai/types";
 import { createFakeGmailProvider } from "./providers/gmail/fake";
+import { createGoogleGmailProvider } from "./providers/gmail/google";
 import type { GmailProvider } from "./providers/gmail/types";
+import { createAuthRoutes, type AuthRouteOptions } from "./routes/auth";
 import { createProviderRoutes } from "./routes/providers";
 import { createStatusRoute } from "./routes/status";
 
@@ -12,6 +14,7 @@ export interface CreateAppOptions {
   config?: AppConfig;
   gmailProvider?: GmailProvider;
   aiProvider?: AiProvider;
+  auth?: Omit<AuthRouteOptions, "config">;
 }
 
 export function createApp(options: CreateAppOptions = {}) {
@@ -21,6 +24,7 @@ export function createApp(options: CreateAppOptions = {}) {
   const aiProvider = options.aiProvider ?? createAiProvider(config);
 
   app.route("/", createStatusRoute(config));
+  app.route("/", createAuthRoutes({ config, ...options.auth }));
   app.route("/", createProviderRoutes({ gmailProvider, aiProvider }));
 
   return app;
@@ -31,24 +35,7 @@ function createGmailProvider(config: AppConfig): GmailProvider {
     return createFakeGmailProvider(config);
   }
 
-  return {
-    async probe() {
-      return {
-        provider: config.gmail.provider,
-        status: "not-configured",
-        account: {
-          id: config.activeAccountId ?? "",
-          email: "",
-          authenticated: false,
-        },
-        label: {
-          id: "",
-          name: "",
-        },
-        messages: [],
-      };
-    },
-  };
+  return createGoogleGmailProvider(config);
 }
 
 function createAiProvider(config: AppConfig): AiProvider {
