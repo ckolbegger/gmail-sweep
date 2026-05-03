@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "bun:test";
 import { createApp } from "../../packages/backend/src/app";
+import { createGoogleGmailProbeFromClient } from "../../packages/backend/src/providers/gmail/google";
 import type { AppConfig } from "../../packages/shared/src/config";
 import {
   checkRealPrereqs,
@@ -104,6 +105,54 @@ describe("gmail oauth component", () => {
     expect(body.authUrl).toStartWith("https://accounts.google.com/o/oauth2/v2/auth?");
   });
 
+  test("it should return the auth URL and manual fallback when the browser opener fails", async () => {
+    const app = createApp({
+      config: config(),
+      auth: {
+        env: {
+          GMAIL_SWEEP_HOME: createTempHome(),
+          GOOGLE_CLIENT_ID: "browser-client",
+          GOOGLE_CLIENT_SECRET: "browser-secret",
+        },
+        openBrowser: async () => {
+          throw new Error("opener unavailable");
+        },
+      },
+    });
+
+    const response = await app.request("/auth/start", { method: "POST" });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.status).toBe("ok");
+    expect(body.authUrl).toStartWith("https://accounts.google.com/o/oauth2/v2/auth?");
+    expect(body.browserOpened).toBe(false);
+    expect(body.manualOpenRequired).toBe(true);
+    expect(body.fallbackReason).toBe("opener unavailable");
+  });
+
+  test("it should return BLOCKED and not call the browser opener when Google OAuth credentials are missing", async () => {
+    let openerCalls = 0;
+    const app = createApp({
+      config: config(),
+      auth: {
+        env: { GMAIL_SWEEP_HOME: createTempHome() },
+        openBrowser: async () => {
+          openerCalls += 1;
+        },
+      },
+    });
+
+    const response = await app.request("/auth/start", { method: "POST" });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      status: "BLOCKED",
+      reason: "Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET",
+    });
+    expect(openerCalls).toBe(0);
+  });
+
   test("it should accept an HTTP request to the redirect endpoint and exchange the code for tokens", async () => {
     const seenCodes: string[] = [];
     const home = createTempHome();
@@ -197,6 +246,35 @@ describe("gmail oauth component", () => {
       refreshToken: "usable-refresh",
       expiresAt: 60_000,
     });
+  });
+});
+
+describe("real gmail probe", () => {
+  test("it should query messages with both INBOX and gmail-sweep-test labels", async () => {
+    const messageListRequests: unknown[] = [];
+    const probe = createGoogleGmailProbeFromClient({
+      users: {
+        messages: {
+          async list(request: unknown) {
+            messageListRequests.push(request);
+            return { data: { messages: [] } };
+          },
+          async get() {
+            throw new Error("message get should not run without list results");
+          },
+        },
+      },
+    });
+
+    await probe.listMessagesForLabel("Label_gmail_sweep_test", 3);
+
+    expect(messageListRequests).toEqual([
+      {
+        userId: "me",
+        labelIds: ["INBOX", "Label_gmail_sweep_test"],
+        maxResults: 3,
+      },
+    ]);
   });
 });
 

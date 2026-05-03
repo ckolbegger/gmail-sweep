@@ -598,6 +598,66 @@ git add packages/backend/src/providers/gmail/google.ts packages/backend/src/rout
 git commit -m "feat: add Gmail auth and real prereq checks"
 ```
 
+### Task 1.5 Bug: Constrain Real Gmail Probe Messages To Inbox Plus Test Label
+
+**Bug:** The real Gmail probe can satisfy the test-message check with messages that have only the `gmail-sweep-test` label. The Task 1.5 acceptance path needs a tiny Inbox/test-label message list so archived test-label-only messages do not satisfy the Inbox probe.
+
+**Files:**
+- Modify: `packages/backend/src/providers/gmail/google.ts`
+- Test: `tests/integration/auth_routes_fake.test.ts` or a focused Google provider stub test
+
+**Test Inventory:**
+```text
+describe("real gmail probe")
+  "it should query messages with both INBOX and gmail-sweep-test labels"
+  "it should not allow archived test-label-only messages to satisfy the Inbox/test-label probe"
+```
+
+- [ ] **Step 1: Add failing stub test**
+- [ ] **Step 2: Require both `INBOX` and the test label in the bounded list query**
+- [ ] **Step 3: Run targeted auth/provider tests**
+- [ ] **Step 4: Commit fix**
+
+### Task 1.5 Bug: Represent Browser-Open Fallback
+
+**Bug:** `/auth/start` opens the platform browser but does not handle opener failure or explicitly represent the fallback path. OAuth must auto-open the browser and fall back to showing the URL.
+
+**Files:**
+- Modify: `packages/backend/src/routes/auth.ts`
+- Test: `tests/integration/auth_routes_fake.test.ts`
+
+**Test Inventory:**
+```text
+describe("gmail oauth browser fallback")
+  "it should return the auth URL when the browser opener fails"
+  "it should not crash on opener failure"
+```
+
+- [ ] **Step 1: Add failing opener-failure test**
+- [ ] **Step 2: Handle opener failure and return fallback URL status**
+- [ ] **Step 3: Run targeted auth tests**
+- [ ] **Step 4: Commit fix**
+
+### Task 1.5 Bug: Add OAuth Missing-Credentials Route Coverage
+
+**Bug:** The explicit Task 1.5 OAuth-route missing-credentials behavior is not covered by tests.
+
+**Files:**
+- Test: `tests/integration/auth_routes_fake.test.ts`
+- Modify: `packages/backend/src/routes/auth.ts` if behavior changes are needed
+
+**Test Inventory:**
+```text
+describe("gmail oauth credentials")
+  "it should return BLOCKED when Google OAuth credentials are missing"
+  "it should not call the browser opener when Google OAuth credentials are missing"
+```
+
+- [ ] **Step 1: Add failing missing-credentials route test**
+- [ ] **Step 2: Keep or fix route behavior so missing credentials returns BLOCKED**
+- [ ] **Step 3: Run targeted auth tests**
+- [ ] **Step 4: Commit fix**
+
 ### Task 1.6: Real AI Provider Probes
 
 **Files:**

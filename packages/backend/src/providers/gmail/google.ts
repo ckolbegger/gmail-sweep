@@ -119,6 +119,36 @@ export interface GoogleGmailProbe {
   >;
 }
 
+interface GmailClient {
+  users: {
+    getProfile?: (request: { userId: string }) => Promise<{ data: { emailAddress?: string | null } }>;
+    labels?: {
+      list(request: { userId: string }): Promise<{
+        data: { labels?: { id?: string | null; name?: string | null }[] | null };
+      }>;
+    };
+    messages: {
+      list(request: { userId: string; labelIds: string[]; maxResults: number }): Promise<{
+        data: { messages?: { id?: string | null }[] | null };
+      }>;
+      get(request: {
+        userId: string;
+        id: string;
+        format: "metadata";
+        metadataHeaders: string[];
+      }): Promise<{
+        data: {
+          id?: string | null;
+          threadId?: string | null;
+          snippet?: string | null;
+          labelIds?: string[] | null;
+          payload?: { headers?: { name?: string | null; value?: string | null }[] | null } | null;
+        };
+      }>;
+    };
+  };
+}
+
 export function createGoogleGmailProbe(env: Env, accountId: string): GoogleGmailProbe {
   const tokens = readStoredGoogleTokens(env, accountId);
 
@@ -136,12 +166,24 @@ export function createGoogleGmailProbe(env: Env, accountId: string): GoogleGmail
 
   const gmail = google.gmail({ version: "v1", auth: client });
 
+  return createGoogleGmailProbeFromClient(gmail);
+}
+
+export function createGoogleGmailProbeFromClient(gmail: GmailClient): GoogleGmailProbe {
   return {
     async getProfile() {
+      if (!gmail.users.getProfile) {
+        throw new Error("Gmail profile API is unavailable");
+      }
+
       const response = await gmail.users.getProfile({ userId: "me" });
       return { email: response.data.emailAddress ?? "" };
     },
     async findLabel(name) {
+      if (!gmail.users.labels) {
+        throw new Error("Gmail labels API is unavailable");
+      }
+
       const response = await gmail.users.labels.list({ userId: "me" });
       const label = response.data.labels?.find((candidate) => candidate.name === name);
 
@@ -154,7 +196,7 @@ export function createGoogleGmailProbe(env: Env, accountId: string): GoogleGmail
     async listMessagesForLabel(labelId, maxResults) {
       const response = await gmail.users.messages.list({
         userId: "me",
-        labelIds: [labelId],
+        labelIds: ["INBOX", labelId],
         maxResults,
       });
       const messages = response.data.messages ?? [];

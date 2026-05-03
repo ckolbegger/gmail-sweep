@@ -71,9 +71,24 @@ export function createAuthRoutes(options: AuthRouteOptions) {
 
     const redirectUri = createRedirectUri(options.config);
     const authUrl = createGoogleAuthUrl(credentials, redirectUri);
-    await openBrowser(authUrl);
 
-    return c.json({ status: "ok", authUrl });
+    try {
+      await openBrowser(authUrl);
+      return c.json({
+        status: "ok",
+        authUrl,
+        browserOpened: true,
+        manualOpenRequired: false,
+      });
+    } catch (error) {
+      return c.json({
+        status: "ok",
+        authUrl,
+        browserOpened: false,
+        manualOpenRequired: true,
+        fallbackReason: error instanceof Error ? error.message : "Browser opener failed",
+      });
+    }
   });
 
   route.get("/auth/callback", async (c) => {
@@ -105,13 +120,20 @@ function createRedirectUri(config: AppConfig): string {
   return `http://${config.backend.host}:${config.backend.port}/auth/callback`;
 }
 
-function defaultOpenBrowser(url: string): void {
+function defaultOpenBrowser(url: string): Promise<void> {
   const command =
     process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open";
   const args = process.platform === "win32" ? ["/c", "start", "", url] : [url];
-  const child = spawn(command, args, {
-    detached: true,
-    stdio: "ignore",
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      detached: true,
+      stdio: "ignore",
+    });
+    child.once("error", reject);
+    child.once("spawn", () => {
+      child.unref();
+      resolve();
+    });
   });
-  child.unref();
 }
