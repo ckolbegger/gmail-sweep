@@ -385,6 +385,8 @@ git commit -m "fix: split gmail and ai provider modes"
 
 ### Task 1.3: Implement Config Paths And Loading
 
+**Status:** DONE in commit `292c551` (`feat: add app config loading`).
+
 **Files:**
 - Create: `packages/backend/src/config/paths.ts`
 - Create: `packages/backend/src/config/load.ts`
@@ -404,7 +406,7 @@ describe("app config loading")
   "it should load active account and provider mode from config"
 ```
 
-- [ ] **Step 1: Write tests**
+- [x] **Step 1: Write tests**
 
 Cover:
 
@@ -413,7 +415,7 @@ Cover:
 - default `sync.maxMessagesPerFetch` is `100`.
 - AI config stores provider/model and env var names, not required raw secrets.
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 ```bash
 bun test tests/unit/config_paths.test.ts tests/unit/config_load.test.ts
@@ -421,7 +423,7 @@ bun test tests/unit/config_paths.test.ts tests/unit/config_load.test.ts
 
 Expected: FAIL because config modules do not exist.
 
-- [ ] **Step 3: Implement config modules**
+- [x] **Step 3: Implement config modules**
 
 Implement:
 
@@ -433,7 +435,7 @@ export function getAccountDir(home: string, accountId: string): string
 export function loadConfig(env = process.env): AppConfig
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 ```bash
 bun test tests/unit/config_paths.test.ts tests/unit/config_load.test.ts
@@ -441,7 +443,7 @@ bun test tests/unit/config_paths.test.ts tests/unit/config_load.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/backend/src/config tests/unit/config_* package.json bun.lock
