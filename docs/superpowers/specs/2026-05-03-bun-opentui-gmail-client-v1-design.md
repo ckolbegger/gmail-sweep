@@ -2,13 +2,14 @@
 
 ## Requirements Checklist
 
-This spec is greenfield. It must not rely on implementation details from other worktrees.
+This spec is greenfield. Design and implementation work must not inspect, read, copy, or use files from the Claude or GLM worktrees, or any other non-Codex worktree, unless the user explicitly reverses this instruction.
 
 - Use Bun for backend, terminal frontend, package management, and tests.
 - Use Hono for the backend HTTP API.
 - Use OpenTUI React for the terminal client.
 - Use `bun:sqlite` for local storage.
 - Normal user entrypoint is the TUI; it starts the backend automatically if needed.
+- If the TUI starts the backend, it stops only that backend process by default on shutdown.
 - Backend remains independently runnable.
 - Store local data under `~/.gmail-sweep/`.
 - Support multiple configured Gmail accounts, with one active account at a time.
@@ -45,6 +46,7 @@ This spec is greenfield. It must not rely on implementation details from other w
 - Custom labels are display-only in v1.
 - Gmail system labels receive special display treatment.
 - Basic local text/operator search is in scope.
+- Free-text local search includes canonical `body_text`, subject, sender, recipients, and relevant headers.
 - Gmail remote search and vector search are out of scope for this spec.
 - AI summaries are in scope; vector search is a later separate spec.
 - Support OpenAI and Anthropic behind an AI provider abstraction.
@@ -60,13 +62,16 @@ This spec is greenfield. It must not rely on implementation details from other w
 - Backfilled messages are summarized only after later locally cached messages in scope are summarized.
 - Built-in dev mode includes fake Gmail/AI providers, default seeded inbox, and named scenarios.
 - Automated tests use fake providers and temp data.
+- The implementation plan must list tmux acceptance tests up front for each deliverable.
 - End-of-deliverable tmux acceptance tests run the actual TUI against real configured services when the deliverable touches Gmail or AI.
 - Real Gmail acceptance tests use a dedicated test label such as `gmail-sweep-test`.
-- Missing credentials/test label/test messages must be reported as blocked or skipped, not passed.
+- Missing credentials/test label/test messages must be reported as blocked or skipped, not passed, and the user must decide whether to proceed.
 
 ## 1. Scope And Architecture
 
-The v1 app is a greenfield, local-first Gmail client with a shared backend and terminal frontend. The primary product surface is the terminal UI. The normal user command starts the OpenTUI React app; the TUI probes the configured localhost backend, starts it if no compatible backend is running, waits for `/status`, then connects. The backend remains independently runnable for tests, debugging, provider probes, and direct API inspection.
+The v1 app is a greenfield, local-first Gmail client with a shared backend and terminal frontend. The primary product surface is the terminal UI. The normal user command starts the OpenTUI React app; the TUI probes the configured localhost backend, starts it if no compatible backend is running, waits for `/status`, then connects. If the TUI starts the backend, it stops only that backend process by default on shutdown; shutdown behavior may be configurable later. The backend remains independently runnable for tests, debugging, provider probes, and direct API inspection.
+
+No web client or web parity requirement is in scope for v1.
 
 Core stack:
 
@@ -163,7 +168,7 @@ Sync gap-prevention invariants:
 
 Backfill is explicit, bounded, and lower priority than current sync. The user chooses a scope, then the TUI asks `Backfill how many days?` with default `1`. The backend walks backward from the oldest locally cached message in that scope, discovers IDs for that date window, hydrates in capped batches, and stops when the requested window is complete. Backfill never runs unbounded through the mailbox.
 
-Backfill scopes include Inbox, All Mail, Unread, Starred, and selected labels. The implementation plan may start with a smaller subset if needed, but the design must preserve the prompt shape and bounded job model.
+Backfill scopes include Inbox, All Mail, Unread, Starred, and selected labels. The implementation plan must include these selectable scopes unless the user explicitly approves a reduced scope.
 
 Backfilled messages do not consume summary capacity ahead of current mail. They become eligible for background summaries only after later locally cached messages in the relevant scope are summarized.
 
@@ -239,7 +244,7 @@ Provider support is abstracted from v1 and includes OpenAI and Anthropic. Config
 
 ## 6. Search, Labels, And Message State
 
-Search in v1 is local-cache only. It supports basic text search plus operators such as:
+Search in v1 is local-cache only. Free-text search matches cached canonical `body_text`, subject, sender, recipients, and relevant headers. It also supports operators such as:
 
 - `from:`
 - `to:`
@@ -319,7 +324,7 @@ Automated test coverage:
 - Backend integration tests: Hono routes with fake Gmail/AI providers, temp SQLite databases, sync/backfill/mutation flows.
 - TUI behavior tests: controller/state tests for navigation, key handling, view mode toggles, scroll state, unread filters, search state, and error/status handling.
 
-Each implementation deliverable ends with a tmux-driven acceptance test of the actual TUI. If the deliverable touches Gmail or AI behavior, that tmux test uses real configured providers. Fake-provider tmux tests may be used as rehearsal or regression coverage, but they do not replace the real-service acceptance gate.
+The implementation plan must list the tmux acceptance tests up front for each deliverable so progress can be tracked and reported. Each implementation deliverable ends with a tmux-driven acceptance test of the actual TUI. If the deliverable touches Gmail or AI behavior, that tmux test uses real configured providers. Fake-provider tmux tests may be used as rehearsal or regression coverage, but they do not replace the real-service acceptance gate.
 
 Real-service acceptance guardrails:
 
@@ -328,7 +333,7 @@ Real-service acceptance guardrails:
 - No permanent delete; Trash only.
 - Mutation tests create or require controlled test messages and restore/cleanup where possible.
 - AI tests use small fixture messages or selected test-label messages.
-- Missing credentials, missing test label, or missing test messages are reported as blocked/skipped explicitly; they are not treated as pass.
+- Missing credentials, missing test label, or missing test messages are reported as blocked/skipped explicitly; they are not treated as pass, and implementation must stop for the user's decision before proceeding past that acceptance gate.
 
 If a tmux acceptance test fails, write a focused bug-fix plan, execute it, rerun the same acceptance test, and only then move to the next acceptance test.
 
@@ -375,7 +380,7 @@ Recommended vertical foundation slices:
    - Select scope, ask days defaulting to `1`, walk backward from oldest cached boundary.
    - Hydrate bounded queue below current-sync priority.
    - Summary priority gates backfilled mail behind newer cached mail.
-   - tmux acceptance: run real bounded backfill against a safe selected scope or test label where possible; otherwise report exactly why real backfill acceptance is blocked.
+   - tmux acceptance: run real bounded backfill against a safe selected scope or test label; if the required real-service setup is missing, report exactly why acceptance is blocked and stop for the user's decision.
 
 8. **Hardening pass**
    - Rate limits, restart/resume, error/status surfaces, config edge cases.
