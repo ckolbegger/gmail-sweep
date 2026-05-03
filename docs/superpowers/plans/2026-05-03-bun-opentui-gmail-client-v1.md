@@ -613,10 +613,12 @@ describe("real gmail probe")
   "it should not allow archived test-label-only messages to satisfy the Inbox/test-label probe"
 ```
 
-- [ ] **Step 1: Add failing stub test**
-- [ ] **Step 2: Require both `INBOX` and the test label in the bounded list query**
-- [ ] **Step 3: Run targeted auth/provider tests**
-- [ ] **Step 4: Commit fix**
+- [x] **Step 1: Add failing stub test**
+- [x] **Step 2: Require both `INBOX` and the test label in the bounded list query**
+- [x] **Step 3: Run targeted auth/provider tests**
+- [x] **Step 4: Commit fix**
+
+Closed in `2522fc1` (`fix: harden Gmail auth probe setup`).
 
 ### Task 1.5 Bug: Represent Browser-Open Fallback
 
@@ -633,10 +635,12 @@ describe("gmail oauth browser fallback")
   "it should not crash on opener failure"
 ```
 
-- [ ] **Step 1: Add failing opener-failure test**
-- [ ] **Step 2: Handle opener failure and return fallback URL status**
-- [ ] **Step 3: Run targeted auth tests**
-- [ ] **Step 4: Commit fix**
+- [x] **Step 1: Add failing opener-failure test**
+- [x] **Step 2: Handle opener failure and return fallback URL status**
+- [x] **Step 3: Run targeted auth tests**
+- [x] **Step 4: Commit fix**
+
+Closed in `2522fc1` (`fix: harden Gmail auth probe setup`).
 
 ### Task 1.5 Bug: Add OAuth Missing-Credentials Route Coverage
 
@@ -653,10 +657,12 @@ describe("gmail oauth credentials")
   "it should not call the browser opener when Google OAuth credentials are missing"
 ```
 
-- [ ] **Step 1: Add failing missing-credentials route test**
-- [ ] **Step 2: Keep or fix route behavior so missing credentials returns BLOCKED**
-- [ ] **Step 3: Run targeted auth tests**
-- [ ] **Step 4: Commit fix**
+- [x] **Step 1: Add failing missing-credentials route test**
+- [x] **Step 2: Keep or fix route behavior so missing credentials returns BLOCKED**
+- [x] **Step 3: Run targeted auth tests**
+- [x] **Step 4: Commit fix**
+
+Closed in `2522fc1` (`fix: harden Gmail auth probe setup`).
 
 ### Task 1.6: Real AI Provider Probes
 
