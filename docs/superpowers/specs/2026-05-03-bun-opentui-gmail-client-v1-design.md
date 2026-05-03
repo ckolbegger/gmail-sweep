@@ -303,6 +303,13 @@ Providers are explicit interfaces:
 - AI provider: OpenAI, Anthropic, and fake dev implementation.
 - Storage: per-account SQLite repository layer.
 
+Provider config values are intentionally distinct so type checks cannot conflate Gmail providers with AI providers:
+
+- Gmail provider mode values: `google` and `fakeGmail`.
+- AI provider mode values: `openai`, `anthropic`, and `fakeAI`.
+
+Do not use a shared `fake` provider value in config contracts. The fake Gmail and fake AI providers are separate provider families, even though both are development/test implementations.
+
 Built-in dev mode is part of the product architecture. It supports a default seeded inbox plus named scenarios such as:
 
 - `large-inbox`
@@ -346,7 +353,7 @@ Recommended vertical foundation slices:
    - tmux acceptance: TUI boots, starts backend, displays auth/provider status, and can run provider probes.
 
 2. **Gmail baseline sync vertical slice**
-   - Real/fake Gmail provider interface.
+   - Real/`fakeGmail` Gmail provider interface.
    - Sync a tiny baseline from the dedicated test label and Inbox with full hydration.
    - Store full bodies locally.
    - TUI shows synced newest-first messages.
@@ -354,7 +361,7 @@ Recommended vertical foundation slices:
 
 3. **MIME/body extraction and AI summary vertical slice**
    - Canonical `body_text`, HTML-only extraction, bad plain-text fallback replacement, audit fields.
-   - OpenAI/Anthropic summary providers plus fake AI.
+   - OpenAI/Anthropic summary providers plus `fakeAI`.
    - Lazy summary view and background next-message prefetch.
    - tmux acceptance: real AI summarizes test-label messages, including an HTML/fallback fixture if available.
 

@@ -119,6 +119,8 @@ scripts/acceptance/
 
 ### Task 1.1: Scaffold Bun Workspace
 
+**Status:** DONE in commit `e1e22d9` (`chore: scaffold Bun workspace`).
+
 **Files:**
 - Create: `package.json`
 - Create: `tsconfig.base.json`
@@ -139,7 +141,7 @@ describe("bun workspace scaffold")
   "it should expose backend and tui package scripts"
 ```
 
-- [ ] **Step 1: Write workspace manifests**
+- [x] **Step 1: Write workspace manifests**
 
 Write the minimal workspace files first because Bun cannot run tests without a manifest. Do not add application code in this step.
 
@@ -165,7 +167,7 @@ Create root scripts:
 }
 ```
 
-- [ ] **Step 2: Add package dependencies**
+- [x] **Step 2: Add package dependencies**
 
 Run:
 
@@ -177,7 +179,7 @@ bun add -d @types/html-to-text
 
 Expected: dependencies added to root workspace lockfile. If package names have changed, stop and verify current OpenTUI docs before substituting.
 
-- [ ] **Step 3: Add `.gitignore` entries**
+- [x] **Step 3: Add `.gitignore` entries**
 
 Include:
 
@@ -190,7 +192,7 @@ node_modules/
 
 Keep existing entries.
 
-- [ ] **Step 4: Verify workspace skeleton**
+- [x] **Step 4: Verify workspace skeleton**
 
 Run:
 
@@ -201,7 +203,7 @@ bun test
 
 Expected: install succeeds; tests report no tests or pass.
 
-- [ ] **Step 5: Run scaffold verification checks**
+- [x] **Step 5: Run scaffold verification checks**
 
 Run:
 
@@ -214,7 +216,7 @@ bun test
 
 Expected: `bun.lock` exists, backend/tui scripts are present, and `bun test` succeeds. Treat a missing lockfile or script as RED and fix the scaffold before continuing.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add package.json bun.lock tsconfig.base.json .gitignore packages
@@ -222,6 +224,8 @@ git commit -m "chore: scaffold Bun workspace"
 ```
 
 ### Task 1.2: Define Shared Contracts
+
+**Status:** DONE in commit `8e25833` (`feat: add shared v1 contracts`).
 
 **Files:**
 - Create: `packages/shared/src/email.ts`
@@ -238,12 +242,12 @@ git commit -m "chore: scaffold Bun workspace"
 ```text
 describe("shared v1 contracts")
   "it should expose the email contract with Gmail ids, labels, body fields, and summary state"
-  "it should expose body audit fields for canonical text extraction"
+  "it should expose body audit source/reason fields needed before MIME extraction; fallback-specific reasons are added in Task 3.1"
   "it should expose sync status fields for pending hydration, pending history, and stale state"
   "it should expose API request and response types used by backend and TUI"
 ```
 
-- [ ] **Step 1: Write type compile test**
+- [x] **Step 1: Write type compile test**
 
 Create `tests/unit/shared_types.test.ts`:
 
@@ -278,7 +282,7 @@ test("shared types expose v1 email contract", () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
@@ -288,11 +292,11 @@ bun test tests/unit/shared_types.test.ts
 
 Expected: FAIL because shared exports do not exist.
 
-- [ ] **Step 3: Implement minimal shared types**
+- [x] **Step 3: Implement minimal shared types**
 
-Define literal unions for summary status, body audit source/reason, system label state, sync status, backfill job, provider mode, and API request/response shapes matching the spec.
+Define literal unions for summary status, body audit source/reason, system label state, sync status, backfill job, provider mode, and API request/response shapes matching the spec. Keep this minimal for current consumers; defer extraction-specific body audit reasons such as `html-fallback` to Task 3.1 when the extractor behavior and tests are implemented.
 
-- [ ] **Step 4: Run test**
+- [x] **Step 4: Run test**
 
 Run:
 
@@ -302,11 +306,81 @@ bun test tests/unit/shared_types.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/shared tests/unit/shared_types.test.ts
 git commit -m "feat: add shared v1 contracts"
+```
+
+### Task 1.2 Bug: Split Gmail And AI Provider Modes
+
+**Bug:** The shared provider/config contracts conflate Gmail provider modes and AI provider modes, causing both provider fields to accept values from the wrong provider family. Gmail provider selection and AI provider selection are different configuration surfaces and must not share one broad union or an ambiguous fake value.
+
+**Status:** DONE in commit `ee63cec` (`fix: split gmail and ai provider modes`). The final contract uses `fakeGmail` for Gmail fake mode and `fakeAI` for AI fake mode.
+
+**Files:**
+- Modify: `packages/shared/src/provider.ts`
+- Modify: `packages/shared/src/config.ts`
+- Modify: `tests/unit/shared_types.test.ts`
+
+**Test Inventory:**
+```text
+describe("shared provider contracts")
+  "it should allow Gmail providers to be google or fakeGmail only"
+  "it should allow AI providers to be openai, anthropic, or fakeAI only"
+  "it should reject AI-only providers for Gmail config at type-check time"
+  "it should reject Gmail-only providers for AI config at type-check time"
+```
+
+- [x] **Step 1: Add provider type tests**
+
+Add compile-time assertions in `tests/unit/shared_types.test.ts` that:
+
+- `GmailProviderMode` accepts `google` and `fakeGmail`;
+- `AiProviderMode` accepts `openai`, `anthropic`, and `fakeAI`;
+- `GmailConfig.provider` does not accept `openai`, `anthropic`, `fake`, or `fakeAI`;
+- `AiConfig.provider` does not accept `gmail`, `google`, `fake`, or `fakeGmail`.
+
+- [x] **Step 2: Run test to verify it fails**
+
+Run:
+
+```bash
+bunx tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution Bundler --skipLibCheck --types bun tests/unit/shared_types.test.ts
+```
+
+Expected: FAIL because the provider unions still accept the old ambiguous fake value or reject the renamed fake values.
+
+- [x] **Step 3: Split provider unions**
+
+Define separate provider unions:
+
+```ts
+export type GmailProviderMode = "google" | "fakeGmail";
+export type AiProviderMode = "openai" | "anthropic" | "fakeAI";
+```
+
+Update config types so Gmail config uses `GmailProviderMode` and AI config uses `AiProviderMode`. Keep any general probe/status type from accepting the union of both provider families only where a generic provider probe result truly needs it.
+
+- [x] **Step 4: Run test**
+
+Run:
+
+```bash
+bun test tests/unit/shared_types.test.ts
+bun test tests/unit
+bunx tsc -p packages/shared/tsconfig.json --noEmit
+bunx tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution Bundler --skipLibCheck --types bun tests/unit/shared_types.test.ts
+```
+
+Expected: PASS.
+
+- [x] **Step 5: Commit**
+
+```bash
+git add packages/shared/src/provider.ts packages/shared/src/config.ts tests/unit/shared_types.test.ts
+git commit -m "fix: split gmail and ai provider modes"
 ```
 
 ### Task 1.3: Implement Config Paths And Loading
@@ -931,6 +1005,7 @@ describe("body extraction")
   "it should choose real text/plain content when it is useful"
   "it should extract readable canonical text from HTML-only messages"
   "it should replace bad plaintext HTML-client warnings with HTML-derived text"
+  "it should add and use the html-fallback body audit reason for bad plaintext replacement"
   "it should store original HTML when present"
   "it should record audit source, reason, warning-pattern match, text length, and HTML-derived text length"
   "it should expose canonical body_text as the only summary input"
@@ -943,6 +1018,7 @@ Cases:
 - real `text/plain` chosen;
 - HTML-only extracts readable text and stores HTML;
 - fallback warning plain text is replaced with HTML-derived text;
+- shared `BodyAuditReason` includes `html-fallback`, and fallback replacement records that reason;
 - audit records source, reason, warning-pattern match, text length, and HTML-derived text length;
 - extractor returns `{ bodyText, bodyHtml, audit }`;
 - summary input uses canonical `body_text`, never raw HTML or fallback warning text.
