@@ -130,7 +130,18 @@ scripts/acceptance/
 - Create: `packages/tui/package.json`
 - Create: `packages/tui/tsconfig.json`
 
+**Test Inventory:**
+```text
+describe("bun workspace scaffold")
+  "it should install workspace dependencies with the current Bun CLI"
+  "it should create a tracked bun.lock lockfile"
+  "it should run bun test from the workspace root"
+  "it should expose backend and tui package scripts"
+```
+
 - [ ] **Step 1: Write workspace manifests**
+
+Write the minimal workspace files first because Bun cannot run tests without a manifest. Do not add application code in this step.
 
 Create root scripts:
 
@@ -190,7 +201,20 @@ bun test
 
 Expected: install succeeds; tests report no tests or pass.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Run scaffold verification checks**
+
+Run:
+
+```bash
+test -f bun.lock
+bun pm pkg get scripts.backend
+bun pm pkg get scripts.tui
+bun test
+```
+
+Expected: `bun.lock` exists, backend/tui scripts are present, and `bun test` succeeds. Treat a missing lockfile or script as RED and fix the scaffold before continuing.
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add package.json bun.lock tsconfig.base.json .gitignore packages
@@ -209,6 +233,15 @@ git commit -m "chore: scaffold Bun workspace"
 - Create: `packages/shared/src/api.ts`
 - Create: `packages/shared/src/index.ts`
 - Test: `tests/unit/shared_types.test.ts`
+
+**Test Inventory:**
+```text
+describe("shared v1 contracts")
+  "it should expose the email contract with Gmail ids, labels, body fields, and summary state"
+  "it should expose body audit fields for canonical text extraction"
+  "it should expose sync status fields for pending hydration, pending history, and stale state"
+  "it should expose API request and response types used by backend and TUI"
+```
 
 - [ ] **Step 1: Write type compile test**
 
@@ -284,6 +317,19 @@ git commit -m "feat: add shared v1 contracts"
 - Test: `tests/unit/config_paths.test.ts`
 - Test: `tests/unit/config_load.test.ts`
 
+**Test Inventory:**
+```text
+describe("app config paths")
+  "it should use GMAIL_SWEEP_HOME when provided"
+  "it should default to ~/.gmail-sweep when no override exists"
+  "it should place account databases under accounts/<account-id>/mail.sqlite"
+
+describe("app config loading")
+  "it should default sync.maxMessagesPerFetch to 100"
+  "it should keep AI secrets as environment variable references"
+  "it should load active account and provider mode from config"
+```
+
 - [ ] **Step 1: Write tests**
 
 Cover:
@@ -342,6 +388,17 @@ git commit -m "feat: add app config loading"
 - Test: `tests/integration/backend_status.test.ts`
 - Test: `tests/integration/provider_probe_fake.test.ts`
 
+**Test Inventory:**
+```text
+describe("backend status route")
+  "it should return ok, version, provider mode, and active account status"
+
+describe("fake provider probes")
+  "it should report the seeded fake Gmail account and gmail-sweep-test label"
+  "it should list a tiny fake test-label message batch"
+  "it should return a deterministic fake AI probe result"
+```
+
 - [ ] **Step 1: Write integration tests**
 
 Use Hono `app.request()` to assert:
@@ -386,9 +443,33 @@ git commit -m "feat: add backend health and fake provider probes"
 - Test: `tests/integration/auth_routes_fake.test.ts`
 - Create: `scripts/acceptance/check-real-prereqs.ts`
 
+**Test Inventory:**
+```text
+describe("gmail oauth component")
+  "it should read gmail client id and secret from environment variables"
+  "it should open a browser to the OAuth login and consent page"
+  "it should accept an HTTP request to the redirect endpoint and exchange the code for tokens"
+  "it should store both the access token and refresh token under the active account"
+  "it should use the refresh token to get a new access token if the access token has expired"
+
+describe("real gmail prereq checker")
+  "it should report BLOCKED when Google credentials are missing"
+  "it should verify the gmail-sweep-test label exists"
+  "it should verify the test label has at least one read-only acceptance message"
+```
+
 - [ ] **Step 1: Write fake auth route tests**
 
-Assert `/auth/status` reports unauthenticated with no token, `/auth/start` returns an auth URL in fake/dev mode, and callback stores a fake account token in a temp home.
+Assert:
+
+- `/auth/status` reports unauthenticated with no token;
+- `/auth/start` reads Google client ID/secret from injected env and returns an auth URL in fake/dev mode;
+- browser opener dependency is called with the generated auth URL;
+- callback accepts an HTTP request with a code, uses a stub token exchanger, and stores access and refresh tokens under the active account;
+- expired access token path uses the stored refresh token through a stub refresh exchanger;
+- missing Google credentials reports BLOCKED.
+
+Also add prereq-check tests with stub Gmail/AI providers for missing credentials, missing `gmail-sweep-test`, missing test messages, and PASS when all prereqs exist.
 
 - [ ] **Step 2: Run tests to verify failure**
 
@@ -447,9 +528,26 @@ git commit -m "feat: add Gmail auth and real prereq checks"
 - Modify: `packages/backend/src/routes/providers.ts`
 - Test: `tests/integration/ai_probe_fake.test.ts`
 
+**Test Inventory:**
+```text
+describe("ai provider probes")
+  "it should select the configured fake, OpenAI, or Anthropic provider"
+  "it should return BLOCKED when required provider credentials are missing"
+  "it should send a tiny bounded OpenAI probe when configured"
+  "it should send a tiny bounded Anthropic probe when configured"
+  "it should surface provider errors without crashing the backend"
+```
+
 - [ ] **Step 1: Write fake route test for configured provider selection**
 
-Assert fake provider works and provider errors are surfaced as `{ ok: false, reason }`.
+Assert:
+
+- fake provider works;
+- configured OpenAI provider returns BLOCKED when `OPENAI_API_KEY` is missing;
+- configured Anthropic provider returns BLOCKED when `ANTHROPIC_API_KEY` is missing;
+- OpenAI probe builds one tiny bounded request through an injected/stubbed client;
+- Anthropic probe builds one tiny bounded request through an injected/stubbed client;
+- provider errors are surfaced as `{ ok: false, reason }`.
 
 - [ ] **Step 2: Run test to verify failure or missing behavior**
 
@@ -488,6 +586,19 @@ git commit -m "feat: add AI provider probes"
 - Create: `tests/tui/backend_process.test.ts`
 - Create: `scripts/acceptance/run-tmux.ts`
 - Create: `scripts/acceptance/deliverable-1.ts`
+
+**Test Inventory:**
+```text
+describe("tui backend process supervisor")
+  "it should reuse an existing compatible backend"
+  "it should start the backend when no compatible backend is running"
+  "it should stop only the backend process started by this TUI"
+
+describe("provider probe acceptance flow")
+  "it should send p in the actual TUI to run Gmail and AI probes"
+  "it should render PASS or BLOCKED probe results in the TUI"
+  "it should treat static or fake-only status as insufficient for real-service acceptance"
+```
 
 - [ ] **Step 1: Write backend process tests**
 
@@ -553,6 +664,19 @@ git commit -m "feat: add TUI boot and provider acceptance"
 - Test: `tests/unit/db_schema.test.ts`
 - Test: `tests/integration/email_repository.test.ts`
 
+**Test Inventory:**
+```text
+describe("sqlite schema")
+  "it should create all v1 tables in a temp database"
+  "it should store full message body fields, labels, and headers"
+  "it should store sync state, pending history, hydration, backfill, and summary queues"
+
+describe("per-account storage")
+  "it should open separate SQLite files for separate active accounts"
+  "it should prevent messages from one account appearing in another account"
+  "it should open only the configured active account database"
+```
+
 - [ ] **Step 1: Write schema/repository tests**
 
 Cover:
@@ -608,6 +732,16 @@ git commit -m "feat: add SQLite storage"
 - Modify: `packages/backend/src/providers/gmail/google.ts`
 - Test: `tests/integration/gmail_provider_fake.test.ts`
 
+**Test Inventory:**
+```text
+describe("gmail message provider")
+  "it should list messages by Inbox scope with page tokens"
+  "it should list messages by gmail-sweep-test label with page tokens"
+  "it should hydrate a message with labels, headers, text parts, and HTML parts"
+  "it should preserve unread, starred, important, and category labels"
+  "it should keep raw Gmail API objects inside the provider layer"
+```
+
 - [ ] **Step 1: Write fake provider tests**
 
 Assert:
@@ -657,6 +791,21 @@ git commit -m "feat: add Gmail listing and hydration provider"
 - Modify: `packages/backend/src/app.ts`
 - Test: `tests/integration/baseline_sync.test.ts`
 - Test: `tests/integration/email_read_routes.test.ts`
+
+**Test Inventory:**
+```text
+describe("baseline sync service")
+  "it should capture a starting history marker as pending and uncommitted"
+  "it should hydrate at most sync.maxMessagesPerFetch messages per run"
+  "it should store full hydrated messages and labels"
+  "it should leave baseline incomplete until all queued ids are hydrated"
+  "it should expose sync status with pending counts"
+
+describe("read-only email routes")
+  "it should return newest-first cached email list"
+  "it should return full cached email detail by id"
+  "it should not expose mutation behavior in read-only routes"
+```
 
 - [ ] **Step 1: Write baseline sync tests**
 
@@ -712,6 +861,21 @@ git commit -m "feat: add baseline sync"
 - Test: `tests/tui/inbox_controller.test.ts`
 - Create: `scripts/acceptance/deliverable-2.ts`
 
+**Test Inventory:**
+```text
+describe("inbox controller")
+  "it should show synced messages newest-first"
+  "it should move selection with j/k and arrow keys"
+  "it should expose unread messages as bold in the view model"
+  "it should load detail for the selected message"
+  "it should record an automatic mark-read intent when previewing or opening a message"
+
+describe("baseline sync acceptance")
+  "it should send r in the actual TUI to trigger real sync"
+  "it should use isolated GMAIL_SWEEP_HOME"
+  "it should display a known gmail-sweep-test message and body marker"
+```
+
 - [ ] **Step 1: Write controller tests**
 
 Cover newest-first list, selection movement, unread bold flag in view model, detail loading, and automatic mark-read intent when previewed/opened.
@@ -760,6 +924,17 @@ git commit -m "feat: display synced inbox in TUI"
 - Modify: `packages/backend/src/db/repositories/emails.ts`
 - Modify: `packages/backend/src/sync/baseline.ts`
 - Test: `tests/unit/body_extraction.test.ts`
+
+**Test Inventory:**
+```text
+describe("body extraction")
+  "it should choose real text/plain content when it is useful"
+  "it should extract readable canonical text from HTML-only messages"
+  "it should replace bad plaintext HTML-client warnings with HTML-derived text"
+  "it should store original HTML when present"
+  "it should record audit source, reason, warning-pattern match, text length, and HTML-derived text length"
+  "it should expose canonical body_text as the only summary input"
+```
 
 - [ ] **Step 1: Write body extraction tests**
 
@@ -815,6 +990,21 @@ git commit -m "feat: extract canonical email body text"
 - Modify: `packages/backend/src/providers/ai/*.ts`
 - Test: `tests/unit/summary_priority.test.ts`
 - Test: `tests/integration/summary_routes.test.ts`
+
+**Test Inventory:**
+```text
+describe("summary provider")
+  "it should summarize canonical body_text with fake provider"
+  "it should summarize canonical body_text with OpenAI provider when configured"
+  "it should summarize canonical body_text with Anthropic provider when configured"
+  "it should reject malformed provider JSON without caching it"
+
+describe("summary scheduler")
+  "it should prioritize the selected message first"
+  "it should queue next likely messages after the selected message"
+  "it should keep backfilled messages behind newer cached mail in the relevant scope"
+  "it should pause visibly on rate limits"
+```
 
 - [ ] **Step 1: Write tests**
 
@@ -873,6 +1063,20 @@ git commit -m "feat: add summary cache and worker"
 - Test: `tests/tui/summary_toggle.test.ts`
 - Create: `scripts/acceptance/deliverable-3.ts`
 
+**Test Inventory:**
+```text
+describe("summary toggle UI")
+  "it should toggle selected message preview between summary and full text with Tab"
+  "it should request a lazy summary when summary view has no cached summary"
+  "it should request prefetch for the next likely message"
+  "it should show loading and error states without blocking navigation"
+  "it should open full-screen detail mode and preserve the same Tab behavior"
+
+describe("summary acceptance")
+  "it should run the actual TUI in tmux against real AI"
+  "it should verify HTML-only or bad-plaintext fallback extraction with a real fixture or stop as BLOCKED"
+```
+
 - [ ] **Step 1: Write TUI behavior tests**
 
 Cover `Tab` summary/text toggle, lazy summary request, next-message prefetch request, and full-screen detail mode.
@@ -924,6 +1128,19 @@ git commit -m "feat: add summary toggle and prefetch UI"
 - Modify: `packages/backend/src/db/repositories/emails.ts`
 - Modify: `packages/backend/src/app.ts`
 - Test: `tests/integration/email_mutations.test.ts`
+
+**Test Inventory:**
+```text
+describe("gmail mutation routes")
+  "it should archive by removing INBOX only after Gmail succeeds"
+  "it should move to Trash using users.messages.trash and never permanent delete"
+  "it should mark read by removing UNREAD only after Gmail succeeds"
+  "it should mark unread by adding UNREAD only after Gmail succeeds"
+  "it should star and unstar only after Gmail succeeds"
+  "it should mark important and unimportant only after Gmail succeeds"
+  "it should leave the local database unchanged when Gmail fails"
+  "it should mount mutation routes in the backend app"
+```
 
 - [ ] **Step 1: Write mutation tests**
 
@@ -981,6 +1198,24 @@ git commit -m "feat: add Gmail mutation routes"
 - Test: `tests/tui/mutation_keys.test.ts`
 - Create: `scripts/acceptance/deliverable-4.ts`
 
+**Test Inventory:**
+```text
+describe("mutation key handling")
+  "it should call archive when e is pressed"
+  "it should call Trash when # is pressed"
+  "it should call unread when u is pressed"
+  "it should call star toggle when s is pressed"
+  "it should call important toggle when ! is pressed"
+  "it should call read automatically when previewing or opening an unread message"
+  "it should update the in-memory view while a mutation is in flight"
+  "it should revert the in-memory view when the API call fails"
+  "it should never show a confirmation prompt"
+
+describe("mutation acceptance")
+  "it should refuse to mutate messages outside gmail-sweep-test"
+  "it should report missing credentials, label, or messages as BLOCKED"
+```
+
 - [ ] **Step 1: Write TUI mutation tests**
 
 Cover keys `e`, `#`, `u`, `s`, `!`; automatic read call when preview/open marks read; in-memory optimistic update; revert on API failure; no confirmation prompt.
@@ -1037,6 +1272,22 @@ git commit -m "feat: add TUI mutation keys"
 - Test: `tests/unit/history_queue.test.ts`
 - Test: `tests/integration/history_sync_fake.test.ts`
 
+**Test Inventory:**
+```text
+describe("history queue")
+  "it should persist pending history changes before hydration"
+  "it should dedupe by account id, history id, message id, change type, and label id"
+  "it should keep the committed history cursor pinned while pending work remains"
+  "it should advance the committed history cursor only after all changes at or below the target watermark are applied"
+  "it should prioritize newer Inbox-visible additions without dropping older pending work"
+  "it should mark the account repair-needed on stale history"
+
+describe("history provider integration")
+  "it should list Gmail history through the provider interface"
+  "it should simulate stale cursor and backlog scenarios with the fake provider"
+  "it should wire history sync into POST /sync"
+```
+
 - [ ] **Step 1: Write queue invariant tests**
 
 Cover:
@@ -1089,6 +1340,20 @@ git commit -m "feat: add durable history sync queue"
 - Test: `tests/tui/sync_status.test.ts`
 - Create: `scripts/acceptance/deliverable-5.ts`
 
+**Test Inventory:**
+```text
+describe("history repair mode")
+  "it should enter repair mode when Gmail history is stale"
+  "it should run list-based baseline repair before establishing a new committed cursor"
+  "it should keep older pending work durable in a 700-change/100-fetch scenario"
+  "it should show sync repair and pinned-cursor status in the TUI"
+
+describe("history acceptance")
+  "it should run actual TUI in tmux with real gmail-sweep-test messages"
+  "it should verify real history changes apply"
+  "it should run a fake backlog scenario to prove no-gap behavior"
+```
+
 - [ ] **Step 1: Write tests**
 
 Assert stale history response enters repair mode and TUI shows a non-silent status. Assert fake 700-change/100-fetch scenario keeps cursor pinned while fresh message appears promptly and older pending work remains durable after fresh-message priority hydration.
@@ -1140,6 +1405,24 @@ git commit -m "feat: add history repair and sync status"
 - Test: `tests/unit/search_parser.test.ts`
 - Test: `tests/integration/local_search.test.ts`
 
+**Test Inventory:**
+```text
+describe("system label classification")
+  "it should display CATEGORY_PERSONAL as Category: Personal"
+  "it should display CATEGORY_SOCIAL as Category: Social"
+  "it should display CATEGORY_PROMOTIONS as Category: Promotions"
+  "it should display CATEGORY_UPDATES as Category: Updates"
+  "it should display CATEGORY_FORUMS as Category: Forums"
+  "it should keep UNREAD, INBOX, TRASH, SPAM, SENT, DRAFT, STARRED, and IMPORTANT out of ordinary user labels"
+
+describe("local search")
+  "it should search canonical body_text, subject, sender, recipients, and headers"
+  "it should parse from:, to:, subject:, and label: operators"
+  "it should parse is:unread, is:read, is:starred, and is:important"
+  "it should parse before: and after: date filters"
+  "it should use only local SQLite data and never Gmail remote search or vector search"
+```
+
 - [ ] **Step 1: Write tests**
 
 Cover:
@@ -1187,6 +1470,23 @@ git commit -m "feat: add local search and label classification"
 - Test: `tests/tui/search_and_keys.test.ts`
 - Create: `scripts/acceptance/deliverable-6.ts`
 
+**Test Inventory:**
+```text
+describe("search and key UI")
+  "it should open local search input with /"
+  "it should submit search through api-client and render results"
+  "it should toggle all vs unread-only with U"
+  "it should scroll preview content up with ["
+  "it should scroll preview content down with ]"
+  "it should show help overlay with ?"
+  "it should reset preview scroll when selected message changes"
+  "it should render semantic labels in the message view model"
+
+describe("search acceptance")
+  "it should run actual TUI in tmux against real cached gmail-sweep-test messages"
+  "it should verify body search, operator search, U, scrolling, help, and label rendering"
+```
+
 - [ ] **Step 1: Write TUI tests**
 
 Cover `/`, `U`, `[`, `]`, `?`, search result state, preview scroll reset on message change, and label display view model.
@@ -1233,6 +1533,25 @@ git commit -m "feat: add TUI search and ergonomics"
 - Modify: `packages/backend/src/routes/sync.ts`
 - Modify: `packages/backend/src/db/repositories/queues.ts`
 - Test: `tests/integration/backfill_service.test.ts`
+
+**Test Inventory:**
+```text
+describe("backfill service")
+  "it should accept inbox, allMail, unread, starred, and label scopes"
+  "it should require labelId when scope type is label"
+  "it should default days to 1 and reject non-positive days"
+  "it should walk backward from the oldest cached boundary for the selected scope"
+  "it should return BLOCKED when the selected scope has no cached baseline"
+  "it should constrain Gmail discovery to the requested date window"
+  "it should persist page and backfill cursors"
+  "it should advance backfill cursor only after discovered and hydrated work is committed"
+  "it should keep current sync ahead of backfill work"
+
+describe("backfill api contract")
+  "it should return a durable jobId for accepted jobs"
+  "it should return blocked and failed response shapes without creating unbounded jobs"
+  "it should expose active and recent jobs with queued, discovering, hydrating, complete, blocked, and failed statuses"
+```
 
 - [ ] **Step 1: Write backfill tests**
 
@@ -1338,6 +1657,26 @@ git commit -m "feat: add bounded backfill service"
 - Test: `tests/unit/summary_backfill_gating.test.ts`
 - Create: `scripts/acceptance/deliverable-7.ts`
 
+**Test Inventory:**
+```text
+describe("backfill prompt UI")
+  "it should open scope selection with B"
+  "it should ask for days after scope selection"
+  "it should default days to 1"
+  "it should cancel cleanly from scope selection"
+  "it should cancel cleanly from day input"
+  "it should submit selected scope and days to the backend"
+  "it should render backfill status and errors"
+
+describe("backfill summary gating")
+  "it should keep backfilled messages behind later locally cached messages in the same scope"
+  "it should not block a backfilled scope behind unrelated scopes"
+
+describe("backfill acceptance")
+  "it should run the actual TUI in tmux"
+  "it should press B, select scope, accept default 1 day, and verify bounded real backfill or BLOCKED"
+```
+
 - [ ] **Step 1: Write tests**
 
 Cover `B` opens scope selection, the user selects scope, the TUI then asks days with default `1`, cancel works at both stages, status/errors render, selected days/scope are sent to backend, and backfilled summaries wait behind later locally cached messages in the relevant selected scope only.
@@ -1401,6 +1740,24 @@ git commit -m "feat: add bounded backfill TUI"
 - Test: `tests/unit/config_edge_cases.test.ts`
 - Test: `tests/tui/error_status.test.ts`
 
+**Test Inventory:**
+```text
+describe("rate limit and backoff status")
+  "it should show Gmail rate-limit backoff state and retry-after when available"
+  "it should show AI rate-limit backoff state and paused summary worker state"
+  "it should keep cached message list and detail navigable during backoff"
+
+describe("restart and resume")
+  "it should resume pending history work after restart"
+  "it should resume pending backfill work after restart"
+  "it should resume pending summary work after restart"
+
+describe("config edge cases")
+  "it should report missing provider credentials without crashing"
+  "it should report misconfigured provider model or mode"
+  "it should keep status visible in the TUI through shared API types"
+```
+
 - [ ] **Step 1: Write hardening tests**
 
 Cover Gmail/AI rate-limit status, worker pause/backoff, restart resumes pending history/backfill/summary work, config failure/missing/misconfigured provider cases, and TUI status is visible without blocking cached reading. Assert cached message list/detail remains navigable during Gmail and AI backoff. Expected status fields include backoff state, retry-after time when available, paused worker state, and resume progress.
@@ -1437,7 +1794,35 @@ git commit -m "feat: harden sync and summary status"
 - Create: `scripts/acceptance/README.md`
 - Modify: `package.json`
 
-- [ ] **Step 1: Add acceptance README**
+**Test Inventory:**
+```text
+describe("final acceptance workflow")
+  "it should document required env vars, gmail-sweep-test label, test messages, and tmux cleanup"
+  "it should run A1 through A8 or stop at the exact blocked gate"
+  "it should require real configured Gmail and AI providers for the real-service path"
+  "it should run fake Gmail rate-limit and AI rate-limit scenarios"
+  "it should run fake restart/resume, mutation failure, history backlog, stale-history repair, and summary provider failure scenarios"
+  "it should never treat fake scenarios as a substitute for real-service acceptance"
+```
+
+- [ ] **Step 1: Write final acceptance workflow tests**
+
+Create tests for the final acceptance script/README contract before writing them:
+
+- README content includes env vars, `gmail-sweep-test`, test-message expectations, BLOCKED vs PASS, and tmux cleanup.
+- deliverable runner executes A1-A8 in order and stops at the first BLOCKED gate.
+- deliverable runner refuses to treat fake scenarios as a substitute for real-service acceptance.
+- deliverable runner includes every required fake rare-failure scenario.
+
+- [ ] **Step 2: Run tests to verify failure**
+
+```bash
+bun test tests/integration/final_acceptance_workflow.test.ts
+```
+
+Expected: FAIL because final acceptance workflow does not exist.
+
+- [ ] **Step 3: Add acceptance README**
 
 Document:
 
@@ -1447,7 +1832,7 @@ Document:
 - how BLOCKED differs from PASS;
 - tmux usage and cleanup.
 
-- [ ] **Step 2: Add final acceptance script**
+- [ ] **Step 4: Add final acceptance script**
 
 Run A1-A8 or print the exact blocked gate and stop. The real-service path must require real configured Gmail and AI providers for Gmail/AI functionality; fake scenarios are supplemental and cannot replace it.
 
@@ -1460,7 +1845,15 @@ Required fake rare-failure scenarios:
 - history backlog and stale-history repair;
 - summary provider malformed response/failure.
 
-- [ ] **Step 3: Run full automated tests**
+- [ ] **Step 5: Run focused workflow tests**
+
+```bash
+bun test tests/integration/final_acceptance_workflow.test.ts
+```
+
+Expected: PASS.
+
+- [ ] **Step 6: Run full automated tests**
 
 ```bash
 bun test
@@ -1468,7 +1861,7 @@ bun test
 
 Expected: PASS.
 
-- [ ] **Step 4: Run final tmux acceptance**
+- [ ] **Step 7: Run final tmux acceptance**
 
 ```bash
 bun run scripts/acceptance/deliverable-8.ts
@@ -1476,10 +1869,10 @@ bun run scripts/acceptance/deliverable-8.ts
 
 Expected: real-service smoke path with real configured Gmail/AI providers PASS or BLOCKED with exact reason requiring user decision; all listed fake rare-failure scenarios PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add package.json scripts/acceptance
+git add package.json scripts/acceptance tests/integration/final_acceptance_workflow.test.ts
 git commit -m "test: add final acceptance workflow"
 ```
 
