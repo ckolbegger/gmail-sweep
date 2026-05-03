@@ -1,3 +1,5 @@
 .superpowers/
 .env
 .env.*
+node_modules/
+.gmail-sweep-test/

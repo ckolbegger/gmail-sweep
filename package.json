@@ -1,0 +1,27 @@
+{
+  "name": "gmail-sweep",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "test": "bun test",
+    "test:unit": "bun test tests/unit",
+    "test:integration": "bun test tests/integration",
+    "test:tui": "bun test tests/tui",
+    "backend": "bun run packages/backend/src/index.ts",
+    "tui": "bun run packages/tui/src/index.tsx"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/html-to-text": "^9.0.4",
+    "typescript": "latest"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.92.0",
+    "@opentui/core": "^0.2.2",
+    "@opentui/react": "^0.2.2",
+    "googleapis": "^171.4.0",
+    "hono": "^4.12.16",
+    "html-to-text": "^10.0.0",
+    "openai": "^6.35.0"
+  }
+}

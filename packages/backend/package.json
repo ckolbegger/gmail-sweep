@@ -1,0 +1,8 @@
+{
+  "name": "@gmail-sweep/backend",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@gmail-sweep/shared": "workspace:*"
+  }
+}
