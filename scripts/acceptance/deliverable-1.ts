@@ -18,12 +18,19 @@ export interface AcceptanceEvaluation {
 }
 
 const probeResultPattern = /(Gmail probe: (PASS|BLOCKED).+AI probe: (PASS|BLOCKED)|Provider probes: BLOCKED)/s;
+const realProbePassPattern = /Gmail probe: PASS .+AI probe: PASS /s;
 
 export function evaluateRealServiceAcceptance(input: AcceptanceEvaluationInput): AcceptanceEvaluation {
   const reasons: string[] = [];
 
-  if (!probeResultPattern.test(input.paneText)) {
+  const renderedProbeResult = probeResultPattern.test(input.paneText);
+
+  if (!renderedProbeResult) {
     reasons.push("TUI did not render provider probe PASS or BLOCKED results");
+  }
+
+  if (renderedProbeResult && !realProbePassPattern.test(input.paneText)) {
+    reasons.push("Real-service acceptance requires Gmail and AI probe PASS results");
   }
 
   if (input.providerModes.gmail === "fakeGmail" || input.providerModes.ai === "fakeAI") {

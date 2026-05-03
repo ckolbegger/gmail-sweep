@@ -1,7 +1,7 @@
 // @ts-nocheck
 /** @jsxImportSource @opentui/react */
 import { useKeyboard } from "@opentui/react";
-import type { AuthStatus, BackendStatus, ProbeResult } from "../api-client";
+import type { AuthStatus, BackendStatus, ProbeResult, ProbeResultStatus } from "../api-client";
 
 export type ProbeState =
   | { state: "idle" }
@@ -71,7 +71,11 @@ function renderProbe(probe: ProbeState): string {
 }
 
 function probeStatus(result: ProbeResult): "PASS" | "BLOCKED" {
-  return result.status === "ok" ? "PASS" : "BLOCKED";
+  return getProbeDisplayStatus(result.status);
+}
+
+export function getProbeDisplayStatus(status: ProbeResultStatus): "PASS" | "BLOCKED" {
+  return status === "ok" || status === "PASS" ? "PASS" : "BLOCKED";
 }
 
 function message(result: ProbeResult): string {

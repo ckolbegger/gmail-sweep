@@ -20,9 +20,11 @@ export interface AuthStatus {
   accountId: string;
 }
 
+export type ProbeResultStatus = ProviderProbeStatus | "PASS" | "BLOCKED" | "blocked";
+
 export interface ProbeResult {
   provider: GmailProviderMode | AiProviderMode;
-  status: ProviderProbeStatus;
+  status: ProbeResultStatus;
   message?: string;
   [key: string]: unknown;
 }

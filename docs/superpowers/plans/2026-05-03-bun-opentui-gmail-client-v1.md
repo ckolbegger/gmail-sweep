@@ -835,6 +835,49 @@ git add packages/tui scripts/acceptance tests/tui
 git commit -m "feat: add TUI boot and provider acceptance"
 ```
 
+### Task 1.7 Bug: Block Real-Service Acceptance When Provider Probes Are Blocked
+
+**Bug:** The A1 acceptance evaluator can return `PASS` when real providers and prereqs are configured but the captured TUI pane contains a blocked Gmail or AI probe result. Real-service acceptance must require real provider probe `PASS` results; `BLOCKED` probe text should keep acceptance blocked.
+
+**Files:**
+- Modify: `scripts/acceptance/deliverable-1.ts`
+- Test: `tests/tui/backend_process.test.ts` or a dedicated acceptance evaluator test file
+
+**Test Inventory:**
+```text
+describe("provider probe acceptance evaluation")
+  "it should return BLOCKED when real providers and prereqs pass but Gmail probe text is BLOCKED"
+  "it should return BLOCKED when real providers and prereqs pass but AI probe text is BLOCKED"
+  "it should return PASS only when real providers, prereqs, and both probe texts pass"
+```
+
+- [x] **Step 1: Add failing evaluator coverage for blocked probe text**
+- [x] **Step 2: Require both Gmail and AI probe text to be `PASS` for real-service acceptance**
+- [x] **Step 3: Run TUI tests and deliverable-1 acceptance**
+- [x] **Step 4: Commit fix**
+
+### Task 1.7 Bug: Align TUI Probe Status Rendering With Backend Values
+
+**Bug:** The TUI maps only `status === "ok"` to `PASS`, but real Gmail probe success returns `PASS`. A successful real Gmail probe can render as `BLOCKED`.
+
+**Files:**
+- Modify: `packages/tui/src/views/App.tsx`
+- Modify: `packages/tui/src/api-client.ts` if response types need widening
+- Test: `tests/tui/backend_process.test.ts` or a focused TUI status-normalization test
+
+**Test Inventory:**
+```text
+describe("provider probe display")
+  "it should render PASS for backend probe status PASS"
+  "it should render PASS for backend probe status ok"
+  "it should render BLOCKED for failed, blocked, or not-configured statuses"
+```
+
+- [x] **Step 1: Add failing status-rendering coverage**
+- [x] **Step 2: Normalize backend probe success values before rendering**
+- [x] **Step 3: Run TUI tests and TUI typecheck**
+- [x] **Step 4: Commit fix**
+
 ## Chunk 2: Storage And Baseline Sync
 
 ### Task 2.1: SQLite Schema And Repositories
