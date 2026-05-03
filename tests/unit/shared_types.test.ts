@@ -128,6 +128,55 @@ test("shared types expose v1 status, auth, account, sync, backfill, and summary 
   `);
 });
 
+test("shared types expose successful API response variants for every request family", () => {
+  expectSharedTypesToCompile(`
+    import type { ApiResponse, Email } from "${process.cwd()}/packages/shared/src";
+
+    const email: Email = {
+      id: "m1",
+      threadId: "t1",
+      subject: "Subject",
+      from: "sender@example.com",
+      to: ["me@example.com"],
+      cc: [],
+      bcc: [],
+      date: "2026-05-03T00:00:00.000Z",
+      snippet: "snippet",
+      labels: ["INBOX"],
+      system: { unread: false, inbox: true, trash: false, spam: false, sent: false, draft: false, starred: false, important: false, category: null },
+      userLabels: [],
+      bodyText: "body",
+      bodyHtml: null,
+      bodyAudit: { source: "text/plain", reason: "plain-text-present" },
+      summary: null,
+      summaryStatus: "missing",
+    };
+
+    const responsesByRequestFamily = {
+      getStatus: { type: "status", ok: true, version: "0.1.0", providerMode: "google", activeAccountId: "account-1" },
+      getAuthStatus: { type: "authStatus", authenticated: true, activeAccountId: "account-1" },
+      startAuth: { type: "startAuth", authUrl: "http://localhost/auth" },
+      authCallback: { type: "authCallback", ok: true, activeAccountId: "account-1" },
+      listAccounts: { type: "listAccounts", accounts: [{ id: "account-1", email: "me@example.com", displayName: "Me" }], activeAccountId: "account-1" },
+      setActiveAccount: { type: "setActiveAccount", activeAccountId: "account-1" },
+      startSync: { type: "startSync", status: { mode: "syncing", totalMessages: 0, pendingHydration: 0, pendingHistory: 0, stale: false } },
+      getSyncStatus: { type: "syncStatus", status: { mode: "idle", totalMessages: 0, pendingHydration: 0, pendingHistory: 0, stale: false } },
+      startBackfill: { type: "startBackfill", ok: true, jobId: "job-1", status: "queued", scope: { type: "inbox" }, window: { olderThan: "2026-05-03T00:00:00.000Z", newerThanOrEqual: "2026-05-02T00:00:00.000Z" }, maxMessagesPerFetch: 100 },
+      getBackfillStatus: { type: "backfillStatus", active: [], recent: [] },
+      listEmails: { type: "listEmails", emails: [email], nextPageToken: null },
+      getEmail: { type: "getEmail", email },
+      mutateEmail: { type: "mutateEmail", email },
+      getSummary: { type: "getSummary", summary: null, summaryStatus: "missing" },
+      createSummary: { type: "createSummary", summaryStatus: "queued" },
+      getSummariesStatus: { type: "summariesStatus", queued: 1, inProgress: 0, rateLimited: false },
+      searchEmails: { type: "searchEmails", emails: [email], nextPageToken: null },
+      probeProvider: { type: "probeProvider", result: { provider: "google", status: "ok" } },
+    } satisfies Record<string, ApiResponse>;
+
+    void responsesByRequestFamily;
+  `);
+});
+
 test("shared types keep Gmail and AI provider modes separate", () => {
   const gmailProvider: GmailProviderMode = "google";
   const fakeGmailProvider: GmailProviderMode = "fake";

@@ -1,5 +1,5 @@
 import type { Email } from "./email";
-import type { ProviderProbeResponse } from "./provider";
+import type { ProviderMode, ProviderProbeResponse } from "./provider";
 import type { SearchQuery } from "./search";
 import type {
   BackfillJobStatus,
@@ -17,6 +17,12 @@ export type EmailMutation =
   | "unstar"
   | "important"
   | "unimportant";
+
+export interface ApiAccount {
+  id: string;
+  email: string;
+  displayName?: string;
+}
 
 export type ApiRequest =
   | { type: "getStatus" }
@@ -39,6 +45,13 @@ export type ApiRequest =
   | { type: "probeProvider"; provider: "gmail" | "ai" };
 
 export type ApiResponse =
+  | { type: "status"; ok: true; version: string; providerMode: ProviderMode; activeAccountId: string | null }
+  | { type: "authStatus"; authenticated: boolean; activeAccountId: string | null }
+  | { type: "startAuth"; authUrl: string }
+  | { type: "authCallback"; ok: true; activeAccountId: string }
+  | { type: "listAccounts"; accounts: ApiAccount[]; activeAccountId: string | null }
+  | { type: "setActiveAccount"; activeAccountId: string }
+  | { type: "startSync"; status: SyncStatus }
   | { type: "syncStatus"; status: SyncStatus }
   | ({ type: "startBackfill" } & StartBackfillResponse)
   | { type: "backfillStatus"; active: BackfillJobStatus[]; recent: BackfillJobStatus[] }
@@ -46,6 +59,8 @@ export type ApiResponse =
   | { type: "getEmail"; email: Email | null }
   | { type: "mutateEmail"; email: Email }
   | { type: "getSummary"; summary: Email["summary"]; summaryStatus: Email["summaryStatus"] }
+  | { type: "createSummary"; summaryStatus: Email["summaryStatus"] }
+  | { type: "summariesStatus"; queued: number; inProgress: number; rateLimited: boolean }
   | { type: "searchEmails"; emails: Email[]; nextPageToken: string | null }
   | { type: "probeProvider"; result: ProviderProbeResponse }
   | { type: "error"; message: string };
