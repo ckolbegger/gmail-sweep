@@ -14,7 +14,10 @@ export function createProviderRoutes(options: ProviderRouteOptions) {
     const result = await options.gmailProvider.probe();
     return c.json(result);
   });
-  route.post("/providers/ai/probe", async (c) => c.json(await options.aiProvider.probe()));
+  route.post("/providers/ai/probe", async (c) => {
+    const result = await options.aiProvider.probe();
+    return c.json(result);
+  });
 
   return route;
 }

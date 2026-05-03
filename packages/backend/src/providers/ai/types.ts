@@ -6,6 +6,7 @@ export interface AiProbeResult {
   status: ProviderProbeStatus;
   model: string;
   summary: EmailSummary;
+  message?: string;
 }
 
 export interface AiProvider {

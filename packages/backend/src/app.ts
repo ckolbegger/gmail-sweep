@@ -1,7 +1,9 @@
 import { Hono } from "hono";
 import type { AppConfig } from "@gmail-sweep/shared/src/config";
 import { loadConfig } from "./config/load";
+import { createAnthropicAiProvider } from "./providers/ai/anthropic";
 import { createFakeAiProvider } from "./providers/ai/fake";
+import { createOpenAiProvider } from "./providers/ai/openai";
 import type { AiProvider } from "./providers/ai/types";
 import { createFakeGmailProvider } from "./providers/gmail/fake";
 import { createGoogleGmailProvider } from "./providers/gmail/google";
@@ -43,18 +45,9 @@ function createAiProvider(config: AppConfig): AiProvider {
     return createFakeAiProvider(config);
   }
 
-  return {
-    async probe() {
-      return {
-        provider: config.ai.provider,
-        status: "not-configured",
-        model: config.ai.model,
-        summary: {
-          description: "",
-          actionItems: [],
-          keyPoints: [],
-        },
-      };
-    },
-  };
+  if (config.ai.provider === "openai") {
+    return createOpenAiProvider(config);
+  }
+
+  return createAnthropicAiProvider(config);
 }
