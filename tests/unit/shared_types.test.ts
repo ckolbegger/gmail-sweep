@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,6 +11,7 @@ import type {
   BackfillJobStatus,
   Email,
   EmailSummary,
+  GmailConfig,
   GmailProviderMode,
   AiProviderMode,
   ProviderMode,
@@ -177,27 +178,66 @@ test("shared types expose successful API response variants for every request fam
   `);
 });
 
-test("shared types keep Gmail and AI provider modes separate", () => {
-  const gmailProvider: GmailProviderMode = "google";
-  const fakeGmailProvider: GmailProviderMode = "fake";
-  const aiProvider: AiProviderMode = "openai";
-  const aiConfig: AiConfig = { provider: "anthropic", model: "claude" };
-  const fakeAiConfig: AiConfig = { provider: "fake", model: "fake-summary" };
+describe("shared provider contracts", () => {
+  test("it should allow Gmail providers to be google or fakeGmail only", () => {
+    const googleProvider: GmailProviderMode = "google";
+    const fakeProvider: GmailProviderMode = "fakeGmail";
+    const googleConfig: GmailConfig = { provider: "google" };
+    const fakeConfig: GmailConfig = { provider: "fakeGmail" };
 
-  expect(gmailProvider).toBe("google");
-  expect(fakeGmailProvider).toBe("fake");
-  expect(aiProvider).toBe("openai");
-  expect(aiConfig.provider).toBe("anthropic");
-  expect(fakeAiConfig.provider).toBe("fake");
+    expect(googleProvider).toBe("google");
+    expect(fakeProvider).toBe("fakeGmail");
+    expect(googleConfig.provider).toBe("google");
+    expect(fakeConfig.provider).toBe("fakeGmail");
+  });
 
-  expectSharedTypesToCompile(`
-    import type { AiConfig } from "${process.cwd()}/packages/shared/src";
+  test("it should allow AI providers to be openai, anthropic, or fakeAI only", () => {
+    const openaiProvider: AiProviderMode = "openai";
+    const anthropicProvider: AiProviderMode = "anthropic";
+    const fakeProvider: AiProviderMode = "fakeAI";
+    const openaiConfig: AiConfig = { provider: "openai", model: "gpt-5" };
+    const anthropicConfig: AiConfig = { provider: "anthropic", model: "claude" };
+    const fakeConfig: AiConfig = { provider: "fakeAI", model: "fake-summary" };
 
+    expect(openaiProvider).toBe("openai");
+    expect(anthropicProvider).toBe("anthropic");
+    expect(fakeProvider).toBe("fakeAI");
+    expect(openaiConfig.provider).toBe("openai");
+    expect(anthropicConfig.provider).toBe("anthropic");
+    expect(fakeConfig.provider).toBe("fakeAI");
+  });
+
+  test("it should reject AI-only providers for Gmail config at type-check time", () => {
+    // @ts-expect-error GmailConfig.provider must not accept the OpenAI provider.
+    const openaiConfig: GmailConfig = { provider: "openai" };
+    // @ts-expect-error GmailConfig.provider must not accept the Anthropic provider.
+    const anthropicConfig: GmailConfig = { provider: "anthropic" };
+    // @ts-expect-error GmailConfig.provider must not accept the old ambiguous fake provider.
+    const fakeConfig: GmailConfig = { provider: "fake" };
+    // @ts-expect-error GmailConfig.provider must not accept the AI fake provider.
+    const fakeAiConfig: GmailConfig = { provider: "fakeAI" };
+
+    void openaiConfig;
+    void anthropicConfig;
+    void fakeConfig;
+    void fakeAiConfig;
+  });
+
+  test("it should reject Gmail-only providers for AI config at type-check time", () => {
     // @ts-expect-error AiConfig.provider must not accept the Gmail provider.
-    const badConfig: AiConfig = { provider: "gmail", model: "mail-model" };
+    const gmailConfig: AiConfig = { provider: "gmail", model: "mail-model" };
+    // @ts-expect-error AiConfig.provider must not accept the Google provider.
+    const googleConfig: AiConfig = { provider: "google", model: "mail-model" };
+    // @ts-expect-error AiConfig.provider must not accept the old ambiguous fake provider.
+    const fakeConfig: AiConfig = { provider: "fake", model: "fake-summary" };
+    // @ts-expect-error AiConfig.provider must not accept the Gmail fake provider.
+    const fakeGmailConfig: AiConfig = { provider: "fakeGmail", model: "fake-summary" };
 
-    void badConfig;
-  `);
+    void gmailConfig;
+    void googleConfig;
+    void fakeConfig;
+    void fakeGmailConfig;
+  });
 });
 
 test("shared types expose bad plain-text fallback body audit reason", () => {

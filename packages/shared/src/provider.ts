@@ -1,6 +1,6 @@
-export type GmailProviderMode = "google" | "fake";
+export type GmailProviderMode = "google" | "fakeGmail";
 
-export type AiProviderMode = "openai" | "anthropic" | "fake";
+export type AiProviderMode = "openai" | "anthropic" | "fakeAI";
 
 export type ProviderMode = GmailProviderMode | AiProviderMode;
 
