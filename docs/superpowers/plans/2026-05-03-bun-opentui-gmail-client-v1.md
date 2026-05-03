@@ -666,6 +666,8 @@ Closed in `2522fc1` (`fix: harden Gmail auth probe setup`).
 
 ### Task 1.6: Real AI Provider Probes
 
+**Status:** DONE in commit `1c577c2` (`feat: add AI provider probes`), with test-isolation fixes in `939272c` and `7ad55d8`.
+
 **Files:**
 - Create: `packages/backend/src/providers/ai/openai.ts`
 - Create: `packages/backend/src/providers/ai/anthropic.ts`
@@ -682,7 +684,7 @@ describe("ai provider probes")
   "it should surface provider errors without crashing the backend"
 ```
 
-- [ ] **Step 1: Write fake route test for configured provider selection**
+- [x] **Step 1: Write fake route test for configured provider selection**
 
 Assert:
 
@@ -693,7 +695,7 @@ Assert:
 - Anthropic probe builds one tiny bounded request through an injected/stubbed client;
 - provider errors are surfaced as `{ ok: false, reason }`.
 
-- [ ] **Step 2: Run test to verify failure or missing behavior**
+- [x] **Step 2: Run test to verify failure or missing behavior**
 
 ```bash
 bun test tests/integration/ai_probe_fake.test.ts
@@ -701,11 +703,11 @@ bun test tests/integration/ai_probe_fake.test.ts
 
 Expected: FAIL if provider selection/probe behavior is missing.
 
-- [ ] **Step 3: Implement OpenAI and Anthropic probe methods**
+- [x] **Step 3: Implement OpenAI and Anthropic probe methods**
 
 Each real probe sends one tiny deterministic request only when credentials are configured. Missing credentials return blocked status rather than throwing.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 ```bash
 bun test tests/integration/ai_probe_fake.test.ts
@@ -713,7 +715,7 @@ bun test tests/integration/ai_probe_fake.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/backend/src/providers/ai packages/backend/src/routes/providers.ts tests/integration/ai_probe_fake.test.ts
@@ -762,6 +764,8 @@ describe("ai provider probe test isolation")
 
 ### Task 1.7: TUI Boot Shell Starts Backend
 
+**Status:** DONE in commit `618fc59` (`feat: add TUI boot and provider acceptance`), with acceptance/rendering fixes in `e8a2764`.
+
 **Files:**
 - Create: `packages/tui/src/backend-process.ts`
 - Create: `packages/tui/src/api-client.ts`
@@ -784,7 +788,7 @@ describe("provider probe acceptance flow")
   "it should treat static or fake-only status as insufficient for real-service acceptance"
 ```
 
-- [ ] **Step 1: Write backend process tests**
+- [x] **Step 1: Write backend process tests**
 
 Test that the supervisor:
 
@@ -792,7 +796,7 @@ Test that the supervisor:
 - starts backend if missing;
 - stops only the process it started.
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 ```bash
 bun test tests/tui/backend_process.test.ts
@@ -800,21 +804,21 @@ bun test tests/tui/backend_process.test.ts
 
 Expected: FAIL because backend supervisor does not exist.
 
-- [ ] **Step 3: Implement TUI shell**
+- [x] **Step 3: Implement TUI shell**
 
 Show backend status, provider mode, auth status, and key hints. Include a setup-screen action, `p`, that calls the backend Gmail and AI probe endpoints through the TUI and renders PASS or BLOCKED results. Use OpenTUI React primitives only.
 
-- [ ] **Step 4: Implement tmux runner**
+- [x] **Step 4: Implement tmux runner**
 
 `run-tmux.ts` should create a named session, run a command, send keys, capture pane text, assert expected text, and always clean up the session.
 
-- [ ] **Step 5: Run automated tests**
+- [x] **Step 5: Run automated tests**
 
 ```bash
 bun test tests/tui/backend_process.test.ts
 ```
 
-- [ ] **Step 6: Run A1 tmux acceptance**
+- [x] **Step 6: Run A1 tmux acceptance**
 
 ```bash
 bun run scripts/acceptance/deliverable-1.ts
@@ -828,7 +832,7 @@ Expected:
 - Real provider probes PASS or BLOCKED with exact reason; static/fake status alone cannot satisfy A1.
 - If BLOCKED, stop for user decision before proceeding.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add packages/tui scripts/acceptance tests/tui
