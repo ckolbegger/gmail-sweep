@@ -452,6 +452,8 @@ git commit -m "feat: add app config loading"
 
 ### Task 1.4: Backend Health And Provider Probe Interfaces
 
+**Status:** DONE in commit `36a22ee` (`feat: add backend health and fake provider probes`).
+
 **Files:**
 - Create: `packages/backend/src/app.ts`
 - Create: `packages/backend/src/index.ts`
@@ -475,7 +477,7 @@ describe("fake provider probes")
   "it should return a deterministic fake AI probe result"
 ```
 
-- [ ] **Step 1: Write integration tests**
+- [x] **Step 1: Write integration tests**
 
 Use Hono `app.request()` to assert:
 
@@ -483,7 +485,7 @@ Use Hono `app.request()` to assert:
 - fake Gmail probe returns account/test-label metadata.
 - fake AI probe returns deterministic success.
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 ```bash
 bun test tests/integration/backend_status.test.ts tests/integration/provider_probe_fake.test.ts
@@ -491,11 +493,11 @@ bun test tests/integration/backend_status.test.ts tests/integration/provider_pro
 
 Expected: FAIL because backend modules do not exist.
 
-- [ ] **Step 3: Implement minimal Hono app and fake providers**
+- [x] **Step 3: Implement minimal Hono app and fake providers**
 
 Fake Gmail should include a `gmail-sweep-test` label and seeded messages. Fake AI returns a fixed summary.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 ```bash
 bun test tests/integration/backend_status.test.ts tests/integration/provider_probe_fake.test.ts
@@ -503,7 +505,7 @@ bun test tests/integration/backend_status.test.ts tests/integration/provider_pro
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/backend tests/integration/backend_status.test.ts tests/integration/provider_probe_fake.test.ts
