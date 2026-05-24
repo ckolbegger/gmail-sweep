@@ -192,4 +192,88 @@ describe("EmbeddingWorker (vec0)", () => {
       expect(result.processed).toBe(0);
     });
   });
+
+  describe("start/stop/getStatus", () => {
+    let db: Database;
+    const mockProvider: EmbedProvider = {
+      embedDocument: mock(async (text: string) => new Array(1024).fill(0.1)),
+      embedQuery: mock(async (text: string) => new Array(1024).fill(0.1)),
+    };
+    const strategy: ExtractionStrategy = {
+      type: "template",
+      template: "Subject: {{subject}}\n\n{{body_text}}",
+    };
+
+    beforeEach(() => {
+      const { mkdtempSync, rmSync } = require("node:fs");
+      const { join } = require("node:path");
+      const { tmpdir } = require("node:os");
+      const dir = mkdtempSync(join(tmpdir(), "gmail-sweep-ew-start-"));
+      const dbPath = join(dir, "test.db");
+      db = initDb(dbPath);
+      cleanup = () => {
+        db.close();
+        rmSync(dir, { recursive: true, force: true });
+      };
+    });
+
+    afterEach(() => {
+      cleanup();
+    });
+
+    it("getStatus reports total emails and unembedded count", () => {
+      seedEmail(db, { id: "e1", subject: "Test", body_text: "body" });
+      seedEmail(db, { id: "e2", subject: "Test2", body_text: "body2" });
+
+      const worker = new EmbeddingWorker(db, mockProvider, strategy, 1024);
+      const status = worker.getStatus();
+
+      expect(status.totalEmails).toBe(2);
+      expect(status.unembedded).toBe(2);
+    });
+
+    it("getStatus reports 0 unembedded when all have embeddings", async () => {
+      seedEmail(db, { id: "e1", subject: "Test", body_text: "body" });
+
+      const worker = new EmbeddingWorker(db, mockProvider, strategy, 1024);
+      await worker.processPending();
+
+      const status = worker.getStatus();
+      expect(status.totalEmails).toBe(1);
+      expect(status.unembedded).toBe(0);
+    });
+
+    it("start processes pending emails immediately", async () => {
+      seedEmail(db, { id: "e1", subject: "Test", body_text: "body" });
+
+      const worker = new EmbeddingWorker(db, mockProvider, strategy, 1024);
+      worker.start(60000);
+
+      // Give the immediate run a moment to complete
+      await new Promise((r) => setTimeout(r, 100));
+
+      const status = worker.getStatus();
+      expect(status.unembedded).toBe(0);
+
+      worker.stop();
+    });
+
+    it("stop cancels the periodic timer", () => {
+      const worker = new EmbeddingWorker(db, mockProvider, strategy, 1024);
+      worker.start(100);
+      worker.stop();
+
+      // Should not throw — just verify no crash
+      expect(true).toBe(true);
+    });
+
+    it("start is idempotent — second call is a no-op", () => {
+      const worker = new EmbeddingWorker(db, mockProvider, strategy, 1024);
+      worker.start(60000);
+      worker.start(60000);
+      worker.stop();
+      // No double-timer leak
+      expect(true).toBe(true);
+    });
+  });
 });

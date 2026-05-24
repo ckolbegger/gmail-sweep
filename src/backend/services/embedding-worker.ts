@@ -4,6 +4,9 @@ import type { ExtractionStrategy } from "../../shared/types";
 import { buildEmbeddingText } from "./extraction-strategies";
 
 export class EmbeddingWorker {
+  private running = false;
+  private intervalTimer: ReturnType<typeof setInterval> | null = null;
+
   constructor(
     private db: Database,
     private provider: EmbedProvider,
@@ -11,6 +14,38 @@ export class EmbeddingWorker {
     private dimension: number,
     private batch: number = 16
   ) {}
+
+  getStatus(): { totalEmails: number; unembedded: number } {
+    const total = (this.db.query("SELECT COUNT(*) as c FROM emails").get() as any).c;
+    const unembedded = (this.db.query(
+      `SELECT COUNT(*) as c FROM emails e
+       LEFT JOIN vec_embeddings v ON v.email_id = e.id
+       WHERE v.email_id IS NULL`
+    ).get() as any).c;
+    return { totalEmails: total, unembedded };
+  }
+
+  start(intervalMs: number = 60000): void {
+    if (this.running) return;
+    this.running = true;
+    console.log(`EmbeddingWorker starting with interval ${intervalMs}ms, queue depth: ${this.getStatus().unembedded}`);
+    this.intervalTimer = setInterval(() => {
+      this.processPending().catch((err) => {
+        console.error("[EmbeddingWorker] Error in auto-run:", err);
+      });
+    }, intervalMs);
+    this.processPending().catch((err) => {
+      console.error("[EmbeddingWorker] Error in initial run:", err);
+    });
+  }
+
+  stop(): void {
+    if (this.intervalTimer) {
+      clearInterval(this.intervalTimer);
+      this.intervalTimer = null;
+    }
+    this.running = false;
+  }
 
   async processPending(): Promise<{ processed: number; failed: number }> {
     // Emails that have content but lack a vec_embeddings row
