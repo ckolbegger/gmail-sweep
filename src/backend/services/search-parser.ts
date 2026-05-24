@@ -22,14 +22,37 @@ export function parseQuery(query: string): ParsedQuery {
     return { operators, freeText: "" };
   }
 
-  const tokens = query.split(/\s+/);
+  // Tokenizer: split on whitespace but keep quoted segments together
+  const tokens: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < query.length; i++) {
+    const ch = query[i];
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+      current += ch;
+    } else if (ch === ' ' && !inQuotes) {
+      if (current) {
+        tokens.push(current);
+        current = "";
+      }
+    } else {
+      current += ch;
+    }
+  }
+  if (current) tokens.push(current);
 
   for (const token of tokens) {
     const colonIndex = token.indexOf(":");
-    if (colonIndex > 0) {
+    if (colonIndex > 0 && !token.startsWith('"')) {
       const prefix = token.substring(0, colonIndex);
-      const value = token.substring(colonIndex + 1);
+      let value = token.substring(colonIndex + 1);
       if (OPERATOR_PREFIXES.includes(prefix)) {
+        // Strip surrounding quotes from value
+        if (value.startsWith('"') && value.endsWith('"') && value.length >= 2) {
+          value = value.slice(1, -1);
+        }
         operators[prefix] = value;
         continue;
       }

@@ -101,6 +101,44 @@ describe("parseQuery", () => {
     expect(result.operators).toEqual({});
     expect(result.freeText).toBe("hello world");
   });
+
+  it("should handle quoted operator value: from:\"AI Fire\"", () => {
+    const result = parseQuery('from:"AI Fire"');
+    expect(result.operators.from).toBe("AI Fire");
+    expect(result.freeText).toBe("");
+  });
+
+  it("should handle quoted operator value with spaces: subject:\"project update\"", () => {
+    const result = parseQuery('subject:"project update"');
+    expect(result.operators.subject).toBe("project update");
+    expect(result.freeText).toBe("");
+  });
+
+  it("should handle mixed quoted operators and free text", () => {
+    const result = parseQuery('from:"AI Fire" important stuff');
+    expect(result.operators.from).toBe("AI Fire");
+    expect(result.freeText).toBe("important stuff");
+  });
+
+  it("should handle multiple quoted operators", () => {
+    const result = parseQuery('from:"AI Fire" subject:"weekly digest"');
+    expect(result.operators.from).toBe("AI Fire");
+    expect(result.operators.subject).toBe("weekly digest");
+    expect(result.freeText).toBe("");
+  });
+
+  it("should handle unquoted multi-word after operator colon — backward compatible", () => {
+    // from:AI Fire with no quotes — Fire is free text (backward compatible)
+    const result = parseQuery("from:AI Fire");
+    expect(result.operators.from).toBe("AI");
+    expect(result.freeText).toBe("Fire");
+  });
+
+  it("should handle free text with quoted phrases that are not operators", () => {
+    const result = parseQuery('"AI Fire" newsletter');
+    expect(result.operators).toEqual({});
+    expect(result.freeText).toBe('"AI Fire" newsletter');
+  });
 });
 
 describe("buildSqlFilters", () => {
