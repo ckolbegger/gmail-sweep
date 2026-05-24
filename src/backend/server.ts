@@ -5,6 +5,8 @@ import { createEmailRouter } from "./routes/emails";
 import { createSyncRouter } from "./routes/sync";
 import { createSearchRouter } from "./routes/search";
 import { createConfigRouter } from "./routes/config";
+import { createSummarizerRouter } from "./routes/summarizer";
+import { createEmbeddingsRouter } from "./routes/embeddings";
 import { SyncService } from "./services/sync";
 import { SearchService } from "./services/search";
 import type { EmbedProvider } from "./services/embed-provider";
@@ -55,6 +57,14 @@ export function createApp(deps: ServerDeps): Hono {
 
   if (deps.configPath) {
     app.route("/", createConfigRouter(deps.configPath));
+  }
+
+  if (deps.summaryWorker) {
+    app.route("/", createSummarizerRouter(deps.summaryWorker));
+  }
+
+  if (deps.embeddingWorker) {
+    app.route("/", createEmbeddingsRouter(deps.embeddingWorker));
   }
 
   return app;
