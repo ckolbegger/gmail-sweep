@@ -68,6 +68,63 @@ describe('search service', () => {
     expect(res.emails.map(e => e.id)).toContain('1');
   });
 
+  it('falls back to semantic search when an LLM-guessed subject filter matches nothing', async () => {
+    // Real-world failure: for "order confirmations and shipping notifications"
+    // the LLM sets filters.subject to the whole topic phrase. No subject
+    // matches the phrase via LIKE, so SQL prefiltering returned 0 candidates
+    // and search bailed out before the vector stage.
+    db.upsertEmail(makeEmail('a', 'shop@amazon.com', 'Your package has shipped!', '2026-03-01T00:00:00Z', 'tracking number enclosed'));
+    db.upsertEmail(makeEmail('b', 'bob@x.com', 'Meeting notes', '2026-03-02T00:00:00Z', 'agenda items'));
+    db.upsertEmbedding('a', new Array(1024).fill(0.1));
+    db.upsertEmbedding('b', new Array(1024).fill(-0.1));
+
+    vi.mocked(mockAi.parseSearchQuery).mockResolvedValue({
+      filters: { subject: 'order confirmations shipping notifications' },
+      semanticQuery: 'order confirmations and shipping notifications',
+    });
+
+    const search = createSearchService(db, mockAi, mockEmbed);
+    const result = await search.search({ query: 'order confirmations and shipping notifications', limit: 5 });
+
+    expect(result.emails.length).toBeGreaterThan(0);
+    expect(result.emails[0].id).toBe('a'); // closest vector wins
+  });
+
+  it('still returns empty when a hard filter (sender) matches nothing', async () => {
+    db.upsertEmail(makeEmail('a', 'alice@x.com', 'Hello', '2026-03-01T00:00:00Z', 'hi'));
+    db.upsertEmbedding('a', new Array(1024).fill(0.1));
+
+    vi.mocked(mockAi.parseSearchQuery).mockResolvedValue({
+      filters: { sender: 'nonexistent@nowhere.com' },
+      semanticQuery: 'hello',
+    });
+
+    const search = createSearchService(db, mockAi, mockEmbed);
+    const result = await search.search({ query: 'emails from nonexistent about hello', limit: 5 });
+
+    expect(result.emails).toHaveLength(0);
+  });
+
+  it('searches all synced mail, not just INBOX', async () => {
+    // Real-world failure: a CATEGORY_PROMOTIONS email without the INBOX label
+    // was the best semantic match but never surfaced, because search reused
+    // the inbox-view listing (hardcoded INBOX filter) for its candidates.
+    const promo = makeEmail('p', 'hello@scylladb.com', 'Why DynamoDB workloads slow down', '2026-03-01T00:00:00Z', 'database performance webinar');
+    promo.labels = ['CATEGORY_PROMOTIONS', 'UNREAD'];
+    db.upsertEmail(promo);
+    db.upsertEmbedding('p', new Array(1024).fill(0.1));
+
+    vi.mocked(mockAi.parseSearchQuery).mockResolvedValue({
+      filters: {},
+      semanticQuery: 'database performance',
+    });
+
+    const search = createSearchService(db, mockAi, mockEmbed);
+    const result = await search.search({ query: 'database performance', limit: 5 });
+
+    expect(result.emails.map(e => e.id)).toContain('p');
+  });
+
   it('returns scores for each result', async () => {
     db.upsertEmail(makeEmail('a', 'a@b.com', 'Test', '2026-03-01T00:00:00Z', 'test'));
 

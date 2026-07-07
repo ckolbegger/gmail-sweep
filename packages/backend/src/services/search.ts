@@ -41,7 +41,8 @@ export function createSearchService(db: DbHandle, ai: AiService, embed: EmbedSer
       }
 
       // Step 2: SQL filter on structured columns (fast indexed queries)
-      const candidates = db.listEmails({
+      const listParams = {
+        scope: 'all' as const,  // search covers all synced mail, not just INBOX
         sender: parsed.filters.sender,
         date_from: parsed.filters.date_from,
         date_to: parsed.filters.date_to,
@@ -51,7 +52,15 @@ export function createSearchService(db: DbHandle, ai: AiService, embed: EmbedSer
         starred: parsed.filters.starred,
         hasActions: parsed.filters.hasActions,
         limit: candidatesLimit(limit),
-      });
+      };
+      let candidates = db.listEmails(listParams);
+
+      // The LLM often guesses a subject phrase that no real subject contains
+      // via LIKE. An explicit subject: operator stays strict, but an
+      // LLM-guessed subject is soft — drop it and let the vector stage rank.
+      if (candidates.length === 0 && !hasOperators && parsed.filters.subject && parsed.semanticQuery.trim()) {
+        candidates = db.listEmails({ ...listParams, subject: undefined });
+      }
 
       if (candidates.length === 0) {
         return { emails: [], scores: [] };

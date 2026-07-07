@@ -58,6 +58,38 @@ describe('database service', () => {
       expect(results.map(e => e.id)).toEqual(['inbox']);
     });
 
+    it("scope 'all' includes non-INBOX emails but still excludes trash and removed", () => {
+      db.upsertEmail({ id: 'inbox', threadId: 't1', subject: 'S', from: 'a@b.com',
+        date: '2026-03-03T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: ['INBOX'], summary: null });
+      db.upsertEmail({ id: 'promo', threadId: 't2', subject: 'S', from: 'a@b.com',
+        date: '2026-03-02T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: ['CATEGORY_PROMOTIONS', 'UNREAD'], summary: null });
+      db.upsertEmail({ id: 'trashed', threadId: 't3', subject: 'S', from: 'a@b.com',
+        date: '2026-03-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: ['TRASH'], summary: null });
+      db.upsertEmail({ id: 'removed', threadId: 't4', subject: 'S', from: 'a@b.com',
+        date: '2026-03-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: ['INBOX'], summary: null });
+      db.markEmailRemoved('removed', 'deleted');
+
+      const results = db.listEmails({ scope: 'all' });
+      expect(results.map(e => e.id)).toEqual(['inbox', 'promo']);
+    });
+
+    it('getNextEmailWithoutSummary skips excluded ids', () => {
+      db.upsertEmail({ id: 'newest', threadId: 't1', subject: 'S', from: 'a@b.com',
+        date: '2026-03-02T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: ['INBOX'], summary: null });
+      db.upsertEmail({ id: 'older', threadId: 't2', subject: 'S', from: 'a@b.com',
+        date: '2026-03-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,
+        labels: ['INBOX'], summary: null });
+
+      expect(db.getNextEmailWithoutSummary()!.id).toBe('newest');
+      expect(db.getNextEmailWithoutSummary(['newest'])!.id).toBe('older');
+      expect(db.getNextEmailWithoutSummary(['newest', 'older'])).toBeNull();
+    });
+
     it('filters emails by sender', () => {
       db.upsertEmail({ id: 'a', threadId: 't1', subject: 'S', from: 'alice@example.com',
         date: '2026-03-01T00:00:00Z', snippet: '', bodyText: '', bodyHtml: null,

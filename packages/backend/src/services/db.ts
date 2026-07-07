@@ -19,7 +19,7 @@ export interface DbHandle {
   deleteGap(id: number): void;
   updateGapBoundary(id: number, update: { olderBoundary: string; estimatedCount: number }): void;
   getEmailsWithoutEmbedding(limit: number): Email[];
-  getNextEmailWithoutSummary(): Email | null;
+  getNextEmailWithoutSummary(excludeIds?: string[]): Email | null;
   countEmailsWithoutSummary(): number;
   markEmailRemoved(id: string, state: 'archived' | 'deleted'): void;
   clearEmailRemoved(id: string): void;
@@ -195,7 +195,12 @@ export function createDb(dbPath: string): DbHandle {
     },
 
     listEmails(params) {
-      const conditions: string[] = ["labels LIKE '%INBOX%'", "removed_state IS NULL"];
+      const conditions: string[] = ["removed_state IS NULL"];
+      if (params.scope === 'all') {
+        conditions.push("labels NOT LIKE '%\"TRASH\"%'");
+      } else {
+        conditions.push("labels LIKE '%INBOX%'");
+      }
       const bindings: unknown[] = [];
 
       if (params.sender) {
@@ -337,10 +342,12 @@ export function createDb(dbPath: string): DbHandle {
       return rows.map(rowToEmail);
     },
 
-    getNextEmailWithoutSummary() {
+    getNextEmailWithoutSummary(excludeIds = []) {
+      const placeholders = excludeIds.map(() => '?').join(',');
+      const notIn = excludeIds.length > 0 ? `AND id NOT IN (${placeholders})` : '';
       const row = db.prepare(
-        'SELECT * FROM emails WHERE summary IS NULL AND removed_state IS NULL ORDER BY date DESC LIMIT 1'
-      ).get() as Record<string, unknown> | undefined;
+        `SELECT * FROM emails WHERE summary IS NULL AND removed_state IS NULL ${notIn} ORDER BY date DESC LIMIT 1`
+      ).get(...excludeIds) as Record<string, unknown> | undefined;
       return row ? rowToEmail(row) : null;
     },
 

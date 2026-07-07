@@ -126,23 +126,32 @@ describe('SummarizerWorker', () => {
     vi.useRealTimers();
   });
 
-  it('skips an email that causes a non-rate-limit error and does not loop', async () => {
-    const nonRateLimitError = new Error('AI parse failure');
-    vi.mocked(getOrCreateSummary)
-      .mockRejectedValueOnce(nonRateLimitError)
-      .mockResolvedValueOnce({ description: 'd', actionItems: [], keyPoints: [] });
+  it('skips an email that causes a non-rate-limit error and continues with the rest', async () => {
+    // e1 is the newest unsummarised email and fails permanently. The worker
+    // must exclude it and keep going — one poison email must not halt the run.
+    const e1 = { ...mockEmail, id: 'e1' };
+    const e2 = { ...mockEmail, id: 'e2' };
+    const done = new Set<string>();
 
-    // Simulate DB always returning e1 (newest unsummarised): e1 fails, second call still returns e1
-    const db = makeDb([mockEmail, mockEmail, null]);
+    vi.mocked(getOrCreateSummary).mockImplementation(async (_db, _ai, id) => {
+      if (id === 'e1') throw new Error('AI parse failure');
+      done.add(id);
+      return { description: 'd', actionItems: [], keyPoints: [] };
+    });
+
+    const db = {
+      countEmailsWithoutSummary: vi.fn().mockReturnValue(2),
+      getNextEmailWithoutSummary: vi.fn((excludeIds: string[] = []) =>
+        [e1, e2].find(e => !excludeIds.includes(e.id) && !done.has(e.id)) ?? null),
+    } as unknown as DbHandle;
+
     const worker = createSummarizerWorker(db, makeAi());
-
     worker.trigger();
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    // e1 failed → added to failedIds → next call returns e1 again → break
-    // e2 never reached in this run (e1 is newest and always returned first)
-    expect(getOrCreateSummary).toHaveBeenCalledTimes(1);
+    expect(done.has('e2')).toBe(true); // e2 summarised despite e1 failing
     expect(worker.getStatus().status).toBe('idle');
+    expect(worker.getStatus().processed).toBe(1);
   });
 
   it('initialises pending count from DB at construction time', () => {

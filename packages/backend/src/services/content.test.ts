@@ -48,6 +48,30 @@ describe('content extraction', () => {
       const result = buildEmbeddingText({ subject: 'Test', bodyText: longBody }, strategy);
       expect(result.length).toBeLessThanOrEqual(8020); // subject + template overhead
     });
+
+    it('strips URLs from the body so they do not pollute the embedding', () => {
+      // Newsletters often arrive as plain text opening with walls of tracking
+      // URLs; embedding those drowns out the actual content.
+      const body = [
+        'https://www.example.com/?utm_source=News&utm_campaign=6ec7412ff8&mc_eid=UNIQID',
+        'https://www.example.com/first-mint?utm_source=News&goal=0_0a3cfde35b',
+        'Gold and silver prices may have found their bottom.',
+        'Read more at http://example.org/analysis?id=123.',
+      ].join('\n');
+
+      const result = buildEmbeddingText({ subject: 'Gold & Silver Bottom?', bodyText: body }, strategy);
+
+      expect(result).toContain('Gold and silver prices may have found their bottom.');
+      expect(result).not.toContain('http');
+      expect(result).not.toContain('utm_source');
+    });
+
+    it('strips URLs before truncating so content beyond a URL wall is kept', () => {
+      const urlWall = ('https://tracker.example.com/click?id=' + 'a'.repeat(200) + '\n').repeat(50); // ~12k chars of URLs
+      const body = urlWall + 'The actual message is here.';
+      const result = buildEmbeddingText({ subject: 'Test', bodyText: body }, strategy);
+      expect(result).toContain('The actual message is here.');
+    });
   });
 
   describe('extractBodyText', () => {

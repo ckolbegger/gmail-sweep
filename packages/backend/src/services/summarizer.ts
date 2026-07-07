@@ -27,9 +27,9 @@ export function createSummarizerWorker(db: DbHandle, ai: AiService): SummarizerW
     pending = db.countEmailsWithoutSummary();
     const failedIds = new Set<string>();
     while (true) {
-      const email = db.getNextEmailWithoutSummary();
+      // Exclude emails that failed this run so one poison email can't halt the rest
+      const email = db.getNextEmailWithoutSummary([...failedIds]);
       if (!email) break;
-      if (failedIds.has(email.id)) break; // remaining emails already failed this run
       try {
         await getOrCreateSummary(db, ai, email.id);
         processed++;

@@ -114,6 +114,7 @@ export interface ExtractionStrategy {
 export interface GmailLabel { id: string; name: string; }
 
 export interface EmailListParams {
+  scope?: 'inbox' | 'all';   // default 'inbox'; 'all' includes non-INBOX (still excludes trash/removed)
   sender?: string;
   date_from?: string;
   date_to?: string;

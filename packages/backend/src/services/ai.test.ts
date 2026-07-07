@@ -49,6 +49,53 @@ describe('AI service', () => {
       );
     });
 
+    it('requests a token budget large enough for reasoning models (parseSearchQuery)', async () => {
+      // Reasoning models (served via Anthropic-compatible proxies) can spend
+      // 100+ tokens on hidden thinking before emitting text. A small
+      // max_tokens makes them return empty content — search then 500s.
+      const Anthropic = (await import('@anthropic-ai/sdk')).default;
+      const MockAnthropic = vi.mocked(Anthropic);
+      MockAnthropic.mockClear();
+
+      const ai = createAiService(llmConfig);
+      await ai.parseSearchQuery('emails about budgets');
+
+      const client = MockAnthropic.mock.results[0]!.value;
+      const call = vi.mocked(client.messages.create).mock.calls[0]![0];
+      expect(call.max_tokens).toBeGreaterThanOrEqual(4096);
+    });
+
+    it('requests a token budget large enough for reasoning models (summarizeEmail)', async () => {
+      const Anthropic = (await import('@anthropic-ai/sdk')).default;
+      const MockAnthropic = vi.mocked(Anthropic);
+      MockAnthropic.mockClear();
+
+      const ai = createAiService(llmConfig);
+      await ai.summarizeEmail('Some email body');
+
+      const client = MockAnthropic.mock.results[0]!.value;
+      const call = vi.mocked(client.messages.create).mock.calls[0]![0];
+      expect(call.max_tokens).toBeGreaterThanOrEqual(4096);
+    });
+
+    it('strips URLs from the email body before summarizing', async () => {
+      // Marketing emails are walls of tracking URLs; they waste the model's
+      // input budget and inflate hidden reasoning until output is truncated.
+      const Anthropic = (await import('@anthropic-ai/sdk')).default;
+      const MockAnthropic = vi.mocked(Anthropic);
+      MockAnthropic.mockClear();
+
+      const ai = createAiService(llmConfig);
+      await ai.summarizeEmail('Buy now https://shop.example.com/x?utm_source=email today');
+
+      const client = MockAnthropic.mock.results[0]!.value;
+      const call = vi.mocked(client.messages.create).mock.calls[0]![0];
+      const prompt = call.messages[0].content as string;
+      expect(prompt).toContain('Buy now');
+      expect(prompt).toContain('today');
+      expect(prompt).not.toContain('https://');
+    });
+
     it('generates a structured summary', async () => {
       const ai = createAiService(llmConfig);
       const summary = await ai.summarizeEmail('Test email body about budget approval');

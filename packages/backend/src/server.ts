@@ -60,5 +60,8 @@ export async function buildServer(options?: { dbPath?: string }) {
   poller.start();
   app.addHook('onClose', async () => poller.stop());
 
+  // Resume any summaries left pending by a previous run
+  summarizer.trigger();
+
   return app;
 }

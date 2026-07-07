@@ -45,13 +45,30 @@ export function getDefaultConfig(): AppConfig {
   };
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function mergeDefaults<T>(defaults: T, loaded: unknown): T {
+  if (!isPlainObject(defaults) || !isPlainObject(loaded)) {
+    return (loaded === undefined ? defaults : loaded) as T;
+  }
+  const result: Record<string, unknown> = { ...loaded };
+  for (const [key, defaultValue] of Object.entries(defaults)) {
+    result[key] = mergeDefaults(defaultValue, loaded[key]);
+  }
+  return result as T;
+}
+
 export async function loadConfig(): Promise<AppConfig> {
   const configPath = getConfigPath();
 
   let config: AppConfig;
   try {
     const raw = await fs.readFile(configPath, 'utf-8');
-    config = JSON.parse(raw) as AppConfig;
+    // The file may be partial or written by another tool — fill in any
+    // missing sections from defaults so required config is always present.
+    config = mergeDefaults(getDefaultConfig(), JSON.parse(raw));
   } catch {
     // File doesn't exist — create with defaults
     config = getDefaultConfig();

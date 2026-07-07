@@ -14,7 +14,7 @@
     "@anthropic-ai/sdk": "^0.39.0",
     "@gmail-sweep/shared": "*",
     "@huggingface/transformers": "^3.0.0",
-    "better-sqlite3": "^11.0.0",
+    "better-sqlite3": "^12.11.1",
     "fastify": "^5.1.0",
     "google-auth-library": "^9.14.0",
     "googleapis": "^144.0.0",

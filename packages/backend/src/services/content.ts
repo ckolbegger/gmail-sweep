@@ -1,7 +1,7 @@
 import { convert } from 'html-to-text';
 import type { ExtractionStrategy } from '@gmail-sweep/shared';
 
-const BODY_MAX_CHARS = 8000;
+export const BODY_MAX_CHARS = 8000;
 
 export function htmlToText(html: string): string {
   if (!html) return '';
@@ -14,11 +14,21 @@ export function htmlToText(html: string): string {
   }).trim();
 }
 
+// Plain-text newsletters open with walls of tracking URLs; fed to models
+// verbatim they drown out the content, so strip URLs before truncating.
+export function stripUrls(text: string): string {
+  return text
+    .replace(/https?:\/\/\S+/gi, '')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 export function buildEmbeddingText(
   email: { subject: string; bodyText: string },
   strategy: ExtractionStrategy
 ): string {
-  const truncatedBody = email.bodyText.slice(0, BODY_MAX_CHARS);
+  const truncatedBody = stripUrls(email.bodyText).slice(0, BODY_MAX_CHARS);
 
   return strategy.template
     .replace('{{subject}}', email.subject ?? '')
