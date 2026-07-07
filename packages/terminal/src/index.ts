@@ -4,6 +4,7 @@ import {
   createAppState, setEmails, refreshEmails, nextEmail, prevEmail, selectEmail, togglePreview,
   archiveEmail, deleteEmail, backToInbox, startSearch, setSearchResults, clearSearch,
   setStatus, setLoading, updateOpenEmail, setSummarizerStatus, toggleDetailFullWidth, showHelp,
+  getActiveEmails,
 } from './app.js';
 import type { AppState } from './app.js';
 import { buildInboxView } from './views/inbox.js';
@@ -162,8 +163,8 @@ renderer.addInputHandler((seq: string): boolean => {
       if (down) { state = nextEmail(state); render(); return true; }
       if (seq === '\r') { triggerOpenEmail(state.selectedIndex); return true; }
       if (seq === '\t') { state = togglePreview(state); render(); return true; }
-      if (seq === 'e') { const e = state.emails[state.selectedIndex]; if (e) triggerArchive(e.id); return true; }
-      if (seq === '#') { const e = state.emails[state.selectedIndex]; if (e) triggerDelete(e.id); return true; }
+      if (seq === 'e') { const e = getActiveEmails(state)[state.selectedIndex]; if (e) triggerArchive(e.id); return true; }
+      if (seq === '#') { const e = getActiveEmails(state)[state.selectedIndex]; if (e) triggerDelete(e.id); return true; }
       if (seq === '[') { inboxView.scrollUp(); renderer.requestRender(); return true; }
       if (seq === ']') { inboxView.scrollDown(); renderer.requestRender(); return true; }
       if (seq === '/') {

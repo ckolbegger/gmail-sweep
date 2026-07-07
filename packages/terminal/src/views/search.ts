@@ -1,7 +1,7 @@
-import { BoxRenderable, TextRenderable, ScrollBoxRenderable, InputRenderable, InputRenderableEvents } from '@opentui/core';
+import { BoxRenderable, TextRenderable, ScrollBoxRenderable, InputRenderable } from '@opentui/core';
 import type { AppState } from '../app.js';
 
-export function buildSearchView(renderer: any, onSearch: (query: string) => void) {
+export function buildSearchView(renderer: any) {
   const root = new BoxRenderable(renderer, { id: 'search-root' });
   root.flexDirection = 'column';
   root.width = '100%';
@@ -19,10 +19,6 @@ export function buildSearchView(renderer: any, onSearch: (query: string) => void
   const input = new InputRenderable(renderer, {
     id: 'search-input',
     placeholder: 'Natural language query, e.g. "emails from Sarah about the deadline"',
-    onSubmit: () => {
-      const q = input.value.trim();
-      if (q) onSearch(q);
-    },
   });
   input.width = '100%';
   inputBox.add(input);
@@ -79,7 +75,10 @@ export function buildSearchView(renderer: any, onSearch: (query: string) => void
     });
   }
 
-  return { root, render, focusInput };
+  function getQuery(): string { return input.value.trim(); }
+  function clearQuery(): void { input.value = ''; }
+
+  return { root, render, focusInput, getQuery, clearQuery };
 }
 
 function truncate(s: string, max: number): string {

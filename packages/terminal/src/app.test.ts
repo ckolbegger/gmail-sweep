@@ -126,7 +126,7 @@ describe('app state', () => {
 
   it('setSearchResults stores results and scores', () => {
     const emails = [makeEmail('a')];
-    const s = setSearchResults(createAppState(), emails, [0.95]);
+    const s = setSearchResults(createAppState(), emails, [0.95], 'q');
     expect(s.searchResults).toHaveLength(1);
     expect(s.searchScores).toEqual([0.95]);
   });
@@ -161,6 +161,14 @@ describe('app state', () => {
   it('backToInbox from help returns to inbox', () => {
     const s = backToInbox(showHelp(createAppState()));
     expect(s.view).toBe('inbox');
+  });
+
+  it('nextEmail caps against searchResults length when filtering', () => {
+    let s = setEmails(createAppState(), [makeEmail('a'), makeEmail('b'), makeEmail('c')]);
+    s = setSearchResults(s, [makeEmail('x'), makeEmail('y')], [1, 0.9], 'q');
+    s = nextEmail(s); // 0 → 1
+    s = nextEmail(s); // 1 → 1 (capped at searchResults.length - 1)
+    expect(s.selectedIndex).toBe(1);
   });
 
   it('setSearchResults stores query and clamps selectedIndex', () => {

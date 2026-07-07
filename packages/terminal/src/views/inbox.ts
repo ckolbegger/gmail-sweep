@@ -3,9 +3,14 @@ import type { AppState } from '../app.js';
 
 export function buildInboxView(renderer: any) {
   const root = new BoxRenderable(renderer, { id: 'inbox-root' });
-  root.flexDirection = 'row';
+  root.flexDirection = 'column';
   root.width = '100%';
   root.height = '100%';
+
+  const mainRow = new BoxRenderable(renderer, { id: 'inbox-main' });
+  mainRow.flexDirection = 'row';
+  mainRow.width = '100%';
+  mainRow.flexGrow = 1;
 
   const listPane = new BoxRenderable(renderer, {
     id: 'list-pane',
@@ -43,10 +48,18 @@ export function buildInboxView(renderer: any) {
   previewScroll.add(previewText);
   previewPane.add(previewScroll);
 
-  root.add(listPane);
-  root.add(previewPane);
+  mainRow.add(listPane);
+  mainRow.add(previewPane);
+
+  const footer = new TextRenderable(renderer, { id: 'inbox-footer', content: '' });
+  footer.width = '100%';
+  footer.height = 1;
+
+  root.add(mainRow);
+  root.add(footer);
 
   function render(state: AppState): void {
+    footer.content = state.status ? ` ${state.status}` : '';
     renderList(state);
     renderPreview(state);
   }
