@@ -8,7 +8,25 @@ export interface SearchService {
   search(request: SearchRequest): Promise<SearchResult>;
 }
 
-export function createSearchService(db: DbHandle, ai: AiService, embed: EmbedService): SearchService {
+const DEFAULT_PARSE_TIMEOUT_MS = 10_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms);
+    promise.then(
+      v => { clearTimeout(timer); resolve(v); },
+      e => { clearTimeout(timer); reject(e); }
+    );
+  });
+}
+
+export function createSearchService(
+  db: DbHandle,
+  ai: AiService,
+  embed: EmbedService,
+  options?: { parseTimeoutMs?: number }
+): SearchService {
+  const parseTimeoutMs = options?.parseTimeoutMs ?? DEFAULT_PARSE_TIMEOUT_MS;
   return {
     async search({ query, limit = 20 }) {
       // Step 1: Parse query — use operator parser first; fall back to LLM if no operators
@@ -33,14 +51,15 @@ export function createSearchService(db: DbHandle, ai: AiService, embed: EmbedSer
         };
       } else {
         try {
-          parsed = await ai.parseSearchQuery(query);
+          parsed = await withTimeout(ai.parseSearchQuery(query), parseTimeoutMs);
         } catch (err) {
-          console.warn('[search] parseSearchQuery failed:', err);
-          throw err;
+          // LLM busy or down — degrade to pure semantic search over the raw
+          // query rather than failing the request.
+          console.warn('[search] parseSearchQuery failed, using raw query as semantic query:', err);
+          parsed = { filters: {}, semanticQuery: query };
         }
       }
 
-      // Step 2: SQL filter on structured columns (fast indexed queries)
       const listParams = {
         scope: 'all' as const,  // search covers all synced mail, not just INBOX
         sender: parsed.filters.sender,
@@ -53,38 +72,36 @@ export function createSearchService(db: DbHandle, ai: AiService, embed: EmbedSer
         hasActions: parsed.filters.hasActions,
         limit: candidatesLimit(limit),
       };
-      let candidates = db.listEmails(listParams);
 
-      // The LLM often guesses a subject phrase that no real subject contains
-      // via LIKE. An explicit subject: operator stays strict, but an
-      // LLM-guessed subject is soft — drop it and let the vector stage rank.
-      if (candidates.length === 0 && !hasOperators && parsed.filters.subject && parsed.semanticQuery.trim()) {
-        candidates = db.listEmails({ ...listParams, subject: undefined });
-      }
-
-      if (candidates.length === 0) {
-        return { emails: [], scores: [] };
-      }
-
-      // Step 3: If we have a semantic query, embed it and score via vec0 KNN
+      // Step 2: If we have a semantic query, KNN over ALL embeddings first,
+      // then apply the SQL filters to the hits. (Filtering by date first and
+      // intersecting dropped semantically-best matches older than the newest
+      // candidate window.)
       if (parsed.semanticQuery.trim()) {
         try {
           const queryVector = await embed.embedQuery(parsed.semanticQuery);
-
-          // Get top-k nearest neighbours from vec0
           const knnResults = db.searchEmbeddings(queryVector, candidatesLimit(limit));
 
           if (knnResults.length > 0) {
-            const distanceMap = new Map(knnResults.map(r => [r.emailId, r.distance]));
+            const knnIds = knnResults.map(r => r.emailId);
+            const knnParams = { ...listParams, ids: knnIds, limit: knnIds.length };
+            let matched = db.listEmails(knnParams);
 
-            // Filter candidates to those with an embedding, score by distance
-            const scored = candidates
-              .filter(email => distanceMap.has(email.id))
-              .map(email => ({ email, distance: distanceMap.get(email.id)! }));
+            // The LLM often guesses a subject phrase that no real subject
+            // contains via LIKE. An explicit subject: operator stays strict,
+            // but an LLM-guessed subject is soft — drop it and let the
+            // vector stage rank.
+            if (matched.length === 0 && !hasOperators && parsed.filters.subject) {
+              matched = db.listEmails({ ...knnParams, subject: undefined });
+            }
 
-            if (scored.length > 0) {
+            if (matched.length > 0) {
+              const distanceMap = new Map(knnResults.map(r => [r.emailId, r.distance]));
               // Sort ascending by distance (closer = more similar)
-              const results = scored.sort((a, b) => a.distance - b.distance).slice(0, limit);
+              const results = matched
+                .map(email => ({ email, distance: distanceMap.get(email.id)! }))
+                .sort((a, b) => a.distance - b.distance)
+                .slice(0, limit);
               return {
                 emails: results.map(r => r.email),
                 // Convert distance to similarity score (1 - distance for cosine)
@@ -97,7 +114,12 @@ export function createSearchService(db: DbHandle, ai: AiService, embed: EmbedSer
         }
       }
 
-      // Fallback: return SQL-filtered results with equal scores
+      // Fallback (no semantic query, no embeddings yet, or embed failure):
+      // SQL-filtered results with equal scores
+      let candidates = db.listEmails(listParams);
+      if (candidates.length === 0 && !hasOperators && parsed.filters.subject && parsed.semanticQuery.trim()) {
+        candidates = db.listEmails({ ...listParams, subject: undefined });
+      }
       const sliced = candidates.slice(0, limit);
       return {
         emails: sliced,

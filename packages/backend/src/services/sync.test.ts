@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createDb, type DbHandle } from './db.js';
-import { runSyncCycle, runSyncWithEmbeddings, runIncrementalSync } from './sync.js';
+import { runSyncCycle, runSyncWithEmbeddings, runIncrementalSync, runIncrementalSyncWithEmbeddings } from './sync.js';
 import type { GmailService } from './gmail.js';
 import type { Email, AppConfig } from '@gmail-sweep/shared';
 import type { EmbedService } from './embed.js';
@@ -149,6 +149,59 @@ describe('runIncrementalSync', () => {
   });
 });
 
+describe('runIncrementalSyncWithEmbeddings', () => {
+  const config: AppConfig = {
+    google: { clientId: '', clientSecret: '', redirectUri: '' },
+    llm: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+    embedding: { provider: 'local', model: 'test', dimension: 1024 },
+    sync: { defaultBatchSize: 10 },
+    contentExtraction: {
+      activeStrategy: 'v1-plain',
+      strategies: { 'v1-plain': { type: 'template', template: '{{body_text}}' } },
+    },
+  };
+
+  it('drains embeddings for emails added by incremental sync', async () => {
+    const db = createDb(':memory:');
+    db.setLastHistoryId('100');
+
+    const gmail = {
+      listHistory: vi.fn().mockResolvedValue({
+        history: [{ id: '101', messagesAdded: [{ id: 'new1' }], messagesDeleted: [] }],
+        historyId: '101',
+      }),
+      fetchMessagesById: vi.fn().mockResolvedValue({
+        id: 'new1', threadId: 'tn', subject: 'hi', from: 'b', date: '2025-02-01T00:00:00Z',
+        snippet: '', bodyText: 'body', bodyHtml: null, labels: ['INBOX'], summary: null,
+      }),
+    } as unknown as GmailService;
+
+    const embed = {
+      embedDocument: vi.fn().mockResolvedValue(new Array(1024).fill(0.5)),
+    } as unknown as EmbedService;
+
+    const result = await runIncrementalSyncWithEmbeddings(db, gmail, embed, config);
+
+    expect(result.mode).toBe('incremental');
+    expect(result.embeddingsGenerated).toBe(1);
+    expect(db.getEmailsWithoutEmbedding(10)).toHaveLength(0);
+    db.close();
+  });
+
+  it('skips the embedding drain when falling back to full-sync mode', async () => {
+    const db = createDb(':memory:'); // no lastHistoryId → mode 'full'
+    const gmail = {} as unknown as GmailService;
+    const embed = { embedDocument: vi.fn() } as unknown as EmbedService;
+
+    const result = await runIncrementalSyncWithEmbeddings(db, gmail, embed, config);
+
+    expect(result.mode).toBe('full');
+    expect(result.embeddingsGenerated).toBe(0);
+    expect(embed.embedDocument).not.toHaveBeenCalled();
+    db.close();
+  });
+});
+
 describe('runSyncWithEmbeddings', () => {
   it('returns embeddingsGenerated from embedding pipeline', async () => {
     const db = {
@@ -186,6 +239,43 @@ describe('runSyncWithEmbeddings', () => {
     const result = await runSyncWithEmbeddings(db, gmail, embed, config, { batchSize: 10 });
     expect(result).toHaveProperty('embeddingsGenerated');
     expect(result.embeddingsGenerated).toBe(0);
+  });
+
+  it('drains the full embedding backlog, not just the first batch', async () => {
+    // Real-world failure: a 500-email sync only embedded 50 emails because
+    // generatePendingEmbeddings ran once with a fixed batch cap and nothing
+    // ever came back for the rest. Search then silently degraded to SQL-only.
+    const db = createDb(':memory:');
+    const emails = Array.from({ length: 120 }, (_, i) =>
+      makeEmail(`msg${i}`, `2026-03-01T00:00:${String(i % 60).padStart(2, '0')}Z`)
+    );
+
+    const gmail = {
+      fetchMessagesSince: vi.fn().mockResolvedValue({ emails, historyId: null }),
+      fetchMessagesBefore: vi.fn().mockResolvedValue([]),
+      fetchMessagesInRange: vi.fn().mockResolvedValue([]),
+    } as unknown as GmailService;
+
+    const embed = {
+      embedDocument: vi.fn().mockResolvedValue(new Array(1024).fill(0.5)),
+    } as unknown as EmbedService;
+
+    const config: AppConfig = {
+      google: { clientId: '', clientSecret: '', redirectUri: '' },
+      llm: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+      embedding: { provider: 'local', model: 'test', dimension: 1024 },
+      sync: { defaultBatchSize: 200 },
+      contentExtraction: {
+        activeStrategy: 'v1-plain',
+        strategies: { 'v1-plain': { type: 'template', template: '{{body_text}}' } },
+      },
+    };
+
+    const result = await runSyncWithEmbeddings(db, gmail, embed, config, { batchSize: 200 });
+
+    expect(result.embeddingsGenerated).toBe(120);
+    expect(db.getEmailsWithoutEmbedding(200)).toHaveLength(0);
+    db.close();
   });
 
   it('skips embeddings when skipEmbeddings is true', async () => {

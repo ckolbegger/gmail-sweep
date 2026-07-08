@@ -42,6 +42,23 @@ describe('generatePendingEmbeddings', () => {
     expect(mockEmbed.embedDocument).not.toHaveBeenCalled();
   });
 
+  it('continues past an email whose embedding fails', async () => {
+    for (let i = 0; i < 3; i++) {
+      db.upsertEmail({ id: `msg${i}`, threadId: `t${i}`, subject: `Email ${i}`, from: 'a@b.com',
+        date: '2026-03-01T00:00:00Z', snippet: '', bodyText: 'body', bodyHtml: null,
+        labels: [], summary: null });
+    }
+    vi.mocked(mockEmbed.embedDocument)
+      .mockResolvedValueOnce(new Array(1024).fill(0.5))
+      .mockRejectedValueOnce(new Error('embed blew up'))
+      .mockResolvedValueOnce(new Array(1024).fill(0.5));
+
+    const count = await generatePendingEmbeddings(db, mockEmbed, strategy, 10);
+
+    expect(count).toBe(2);
+    expect(db.getEmailsWithoutEmbedding(10)).toHaveLength(1);
+  });
+
   it('respects the batch limit', async () => {
     for (let i = 0; i < 5; i++) {
       db.upsertEmail({ id: `msg${i}`, threadId: `t${i}`, subject: `Email ${i}`, from: 'a@b.com',

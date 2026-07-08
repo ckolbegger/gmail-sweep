@@ -125,6 +125,62 @@ describe('search service', () => {
     expect(result.emails.map(e => e.id)).toContain('p');
   });
 
+  it('surfaces the best semantic match even when it is older than the newest candidates', async () => {
+    // Real-world failure: candidates were the newest N emails by date, then
+    // intersected with KNN hits. The semantically closest email — if older
+    // than that window — was silently dropped and search returned newest
+    // emails with fake 1.0 scores.
+    const near = new Array(1024).fill(0.1);   // ~identical to query vector
+    const far = new Array(1024).fill(-0.1);   // opposite direction
+
+    // limit=2 → candidate window of 20 newest emails; 'old' is number 25
+    db.upsertEmail(makeEmail('old', 'archive@x.com', 'Kubernetes migration plan', '2026-01-01T00:00:00Z', 'cluster upgrade runbook'));
+    db.upsertEmbedding('old', near);
+    for (let i = 0; i < 24; i++) {
+      const id = `new${i}`;
+      db.upsertEmail(makeEmail(id, 'noise@x.com', `Newsletter ${i}`, `2026-03-${String(i + 1).padStart(2, '0')}T00:00:00Z`, 'unrelated chatter'));
+      db.upsertEmbedding(id, far);
+    }
+
+    vi.mocked(mockAi.parseSearchQuery).mockResolvedValue({
+      filters: {},
+      semanticQuery: 'kubernetes cluster upgrade',
+    });
+
+    const search = createSearchService(db, mockAi, mockEmbed);
+    const result = await search.search({ query: 'kubernetes cluster upgrade', limit: 2 });
+
+    expect(result.emails[0]?.id).toBe('old');
+    expect(result.scores[0]).toBeGreaterThan(0.9);
+  });
+
+  it('falls back to pure semantic search when the LLM query parser fails', async () => {
+    // The LLM proxy can be busy (e.g. summarizer churning through a backlog)
+    // or down. Search should degrade to treating the whole query as the
+    // semantic query instead of failing the request.
+    db.upsertEmail(makeEmail('a', 'billing@x.com', 'Your bill is due', '2026-03-01T00:00:00Z', 'pay your invoice'));
+    db.upsertEmbedding('a', new Array(1024).fill(0.1));
+
+    vi.mocked(mockAi.parseSearchQuery).mockRejectedValue(new Error('LLM timeout'));
+
+    const search = createSearchService(db, mockAi, mockEmbed);
+    const result = await search.search({ query: 'bills that are due', limit: 5 });
+
+    expect(result.emails.map(e => e.id)).toContain('a');
+  });
+
+  it('gives up on a hanging LLM parser after the parse timeout', async () => {
+    db.upsertEmail(makeEmail('a', 'billing@x.com', 'Your bill is due', '2026-03-01T00:00:00Z', 'pay your invoice'));
+    db.upsertEmbedding('a', new Array(1024).fill(0.1));
+
+    vi.mocked(mockAi.parseSearchQuery).mockReturnValue(new Promise(() => {})); // never resolves
+
+    const search = createSearchService(db, mockAi, mockEmbed, { parseTimeoutMs: 50 });
+    const result = await search.search({ query: 'bills that are due', limit: 5 });
+
+    expect(result.emails.map(e => e.id)).toContain('a');
+  });
+
   it('returns scores for each result', async () => {
     db.upsertEmail(makeEmail('a', 'a@b.com', 'Test', '2026-03-01T00:00:00Z', 'test'));
 

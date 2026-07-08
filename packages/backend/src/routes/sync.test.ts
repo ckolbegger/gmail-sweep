@@ -7,11 +7,11 @@ import { createDb, type DbHandle } from '../services/db.js';
 
 vi.mock('../services/sync.js', () => ({
   runSyncWithEmbeddings: vi.fn(),
-  runIncrementalSync: vi.fn(),
+  runIncrementalSyncWithEmbeddings: vi.fn(),
   fillSingleGap: vi.fn(),
 }));
 
-import { runSyncWithEmbeddings, runIncrementalSync, fillSingleGap } from '../services/sync.js';
+import { runSyncWithEmbeddings, runIncrementalSyncWithEmbeddings, fillSingleGap } from '../services/sync.js';
 
 const mockSyncResult = {
   fetched: 10,
@@ -38,15 +38,18 @@ function makeDeps(summarizerOverrides?: Partial<SummarizerWorker>) {
 }
 
 describe('POST /sync/incremental', () => {
-  it('calls runIncrementalSync and returns result', async () => {
-    const incrementalResult = { fetched: 1, newEmails: 1, gapsFilled: 0, olderFetched: 0, deleted: 0, remainingGaps: [], mode: 'incremental' as const };
-    vi.mocked(runIncrementalSync).mockResolvedValueOnce(incrementalResult);
+  it('calls runIncrementalSyncWithEmbeddings and returns result', async () => {
+    // Embedding generation lives in the service so new incremental emails
+    // become searchable immediately; the route only exposes the result.
+    const incrementalResult = { fetched: 2, newEmails: 2, gapsFilled: 0, olderFetched: 0, deleted: 0, remainingGaps: [], mode: 'incremental' as const, embeddingsGenerated: 2 };
+    vi.mocked(runIncrementalSyncWithEmbeddings).mockResolvedValueOnce(incrementalResult);
     const deps = makeDeps();
     const app = Fastify();
     await app.register(syncRoutes, deps);
     const res = await app.inject({ method: 'POST', url: '/sync/incremental' });
     expect(res.statusCode).toBe(200);
     expect(res.json().mode).toBe('incremental');
+    expect(res.json().embeddingsGenerated).toBe(2);
   });
 });
 

@@ -225,6 +225,11 @@ export function createDb(dbPath: string): DbHandle {
         conditions.push("labels LIKE ?");
         bindings.push(`%"${params.label}"%`);
       }
+      if (params.ids) {
+        if (params.ids.length === 0) return [];
+        conditions.push(`id IN (${params.ids.map(() => '?').join(',')})`);
+        bindings.push(...params.ids);
+      }
       if (params.starred === true)  conditions.push("labels LIKE '%\"STARRED\"%'");
       if (params.hasActions === true)  conditions.push("summary IS NOT NULL AND json_array_length(json_extract(summary, '$.actionItems')) > 0");
       if (params.hasActions === false) conditions.push("(summary IS NULL OR json_array_length(json_extract(summary, '$.actionItems')) = 0)");

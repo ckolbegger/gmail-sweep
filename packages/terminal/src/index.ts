@@ -174,6 +174,7 @@ renderer.addInputHandler((seq: string): boolean => {
         } else {
           state = startSearch(state);
           render();
+          searchView.clearQuery();
           searchView.focusInput();
         }
         return true;

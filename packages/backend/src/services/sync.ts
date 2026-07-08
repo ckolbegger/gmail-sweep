@@ -175,6 +175,29 @@ export async function fillSingleGap(
 
 const EMBEDDING_BATCH_SIZE = 50;
 
+/**
+ * Embeds every email that doesn't yet have an embedding, in batches.
+ * Stops when a pass makes no progress (nothing pending, or every remaining
+ * email fails to embed). Returns the total number of embeddings generated.
+ */
+export async function drainPendingEmbeddings(
+  db: DbHandle,
+  embed: EmbedService,
+  config: AppConfig
+): Promise<number> {
+  const { activeStrategy, strategies } = config.contentExtraction;
+  const strategy = strategies[activeStrategy];
+  if (!strategy) return 0;
+
+  let total = 0;
+  let generated: number;
+  do {
+    generated = await generatePendingEmbeddings(db, embed, strategy, EMBEDDING_BATCH_SIZE);
+    total += generated;
+  } while (generated > 0);
+  return total;
+}
+
 export async function runSyncWithEmbeddings(
   db: DbHandle,
   gmail: GmailService,
@@ -186,14 +209,21 @@ export async function runSyncWithEmbeddings(
 
   let embeddingsGenerated = 0;
   if (!options.skipEmbeddings) {
-    const { activeStrategy, strategies } = config.contentExtraction;
-    const strategy = strategies[activeStrategy];
-    if (strategy) {
-      embeddingsGenerated = await generatePendingEmbeddings(
-        db, embed, strategy, EMBEDDING_BATCH_SIZE
-      );
-    }
+    embeddingsGenerated = await drainPendingEmbeddings(db, embed, config);
   }
 
   return { ...syncResult, embeddingsGenerated };
+}
+
+export async function runIncrementalSyncWithEmbeddings(
+  db: DbHandle,
+  gmail: GmailService,
+  embed: EmbedService,
+  config: AppConfig
+): Promise<SyncResult & { deleted: number; mode: 'incremental' | 'full'; embeddingsGenerated: number }> {
+  const result = await runIncrementalSync(db, gmail);
+  const embeddingsGenerated = result.mode === 'incremental'
+    ? await drainPendingEmbeddings(db, embed, config)
+    : 0;
+  return { ...result, embeddingsGenerated };
 }

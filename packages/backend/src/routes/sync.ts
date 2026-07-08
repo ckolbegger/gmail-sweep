@@ -4,7 +4,7 @@ import type { GmailService } from '../services/gmail.js';
 import type { EmbedService } from '../services/embed.js';
 import type { AppConfig } from '@gmail-sweep/shared';
 import type { SummarizerWorker } from '../services/summarizer.js';
-import { runSyncWithEmbeddings, runIncrementalSync, fillSingleGap } from '../services/sync.js';
+import { runSyncWithEmbeddings, runIncrementalSyncWithEmbeddings, fillSingleGap } from '../services/sync.js';
 
 export async function syncRoutes(
   app: FastifyInstance,
@@ -40,7 +40,7 @@ export async function syncRoutes(
   });
 
   app.post('/sync/incremental', async () => {
-    const result = await runIncrementalSync(db, gmail);
+    const result = await runIncrementalSyncWithEmbeddings(db, gmail, embed, config);
     if (result.mode === 'incremental') summarizer.trigger();
     return result;
   });

@@ -126,4 +126,5 @@ export interface EmailListParams {
   label?: string;
   starred?: boolean;
   hasActions?: boolean;
+  ids?: string[];   // restrict to these email ids (used by semantic search to filter KNN hits)
 }

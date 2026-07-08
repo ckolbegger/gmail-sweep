@@ -19,10 +19,14 @@ export async function generatePendingEmbeddings(
   let count = 0;
 
   for (const email of pending) {
-    const text = buildEmbeddingText({ subject: email.subject, bodyText: email.bodyText }, strategy);
-    const vector = await embedService.embedDocument(text);
-    db.upsertEmbedding(email.id, vector);
-    count++;
+    try {
+      const text = buildEmbeddingText({ subject: email.subject, bodyText: email.bodyText }, strategy);
+      const vector = await embedService.embedDocument(text);
+      db.upsertEmbedding(email.id, vector);
+      count++;
+    } catch (err) {
+      console.warn(`[embeddings] failed to embed ${email.id}:`, err);
+    }
   }
 
   return count;
