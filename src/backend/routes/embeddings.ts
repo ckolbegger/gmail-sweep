@@ -8,5 +8,15 @@ export function createEmbeddingsRouter(worker: EmbeddingWorker) {
     return c.json(worker.getStatus());
   });
 
+  router.post("/embeddings/stop", (c) => {
+    worker.stop();
+    return c.json({ status: "stopped", ...worker.getStatus() });
+  });
+
+  router.post("/embeddings/start", (c) => {
+    worker.start(60_000);
+    return c.json({ status: "started", ...worker.getStatus() });
+  });
+
   return router;
 }

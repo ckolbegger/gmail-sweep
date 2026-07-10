@@ -1,4 +1,5 @@
 import type { LLMProvider, SummaryResult, ParsedQuery } from "./provider";
+import { MIN_MAX_TOKENS } from "./provider";
 import { buildSummaryPrompt } from "./prompt";
 
 export class AnthropicAdapter implements LLMProvider {
@@ -21,7 +22,7 @@ export class AnthropicAdapter implements LLMProvider {
 
     const requestBody = {
       model: this.model,
-      max_tokens: 1024,
+      max_tokens: MIN_MAX_TOKENS,
       system,
       messages: [{ role: "user", content: user }],
     };
@@ -82,7 +83,7 @@ Query: "${query}"`;
 
     const requestBody = {
       model: this.model,
-      max_tokens: 512,
+      max_tokens: MIN_MAX_TOKENS,
       system: "You parse email search queries into structured JSON. Return ONLY valid JSON, no other text.",
       messages: [{ role: "user", content: prompt }],
     };

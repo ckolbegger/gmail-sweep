@@ -140,4 +140,30 @@ describe("AnthropicAdapter", () => {
 
     await expect(adapter.summarize(email)).rejects.toThrow();
   });
+
+  it("summarize sends max_tokens >= 2048 (LAN proxy floor)", async () => {
+    const adapter = createAdapter();
+    let requestBody: any;
+    globalThis.fetch = mock(async (_u: string, opts: any) => {
+      requestBody = JSON.parse(opts.body);
+      return new Response(
+        JSON.stringify({ content: [{ type: "text", text: JSON.stringify(fakeResponse) }] })
+      );
+    }) as any;
+    await adapter.summarize(email);
+    expect(requestBody.max_tokens).toBeGreaterThanOrEqual(2048);
+  });
+
+  it("parseSearchQuery sends max_tokens >= 2048", async () => {
+    const adapter = createAdapter();
+    let requestBody: any;
+    globalThis.fetch = mock(async (_u: string, opts: any) => {
+      requestBody = JSON.parse(opts.body);
+      return new Response(
+        JSON.stringify({ content: [{ type: "text", text: '{"filters":{},"semanticQuery":"invoices"}' }] })
+      );
+    }) as any;
+    await adapter.parseSearchQuery("invoices");
+    expect(requestBody.max_tokens).toBeGreaterThanOrEqual(2048);
+  });
 });

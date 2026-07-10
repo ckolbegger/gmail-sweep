@@ -1,4 +1,5 @@
 import type { LLMProvider, SummaryResult, ParsedQuery } from "./provider";
+import { MIN_MAX_TOKENS } from "./provider";
 import { buildSummaryPrompt } from "./prompt";
 
 export class OpenAIAdapter implements LLMProvider {
@@ -21,6 +22,7 @@ export class OpenAIAdapter implements LLMProvider {
 
     const requestBody = {
       model: this.model,
+      max_tokens: MIN_MAX_TOKENS,
       messages: [
         { role: "system", content: system },
         { role: "user", content: user },
@@ -77,6 +79,7 @@ Query: "${query}"`;
 
     const requestBody = {
       model: this.model,
+      max_tokens: MIN_MAX_TOKENS,
       messages: [
         { role: "system", content: "You parse email search queries into structured JSON. Return ONLY valid JSON, no other text." },
         { role: "user", content: prompt },

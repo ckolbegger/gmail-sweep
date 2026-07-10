@@ -10,13 +10,13 @@ describe("buildEmbeddingText", () => {
     expect(out).toBe("S: Hi\n\nHello world");
   });
 
-  test("truncates body to 8000 chars", () => {
+  test("truncates body to 1000 chars (bounded for CPU embedding latency)", () => {
     const body = "x".repeat(9000);
     const out = buildEmbeddingText(
       { subject: "", bodyText: body },
       { type: "template", template: "{{body_text}}" }
     );
-    expect(out.length).toBe(8000);
+    expect(out.length).toBe(1000);
   });
 
   test("handles missing subject gracefully", () => {

@@ -5,6 +5,7 @@ import { buildEmbeddingText } from "./extraction-strategies";
 
 export class EmbeddingWorker {
   private running = false;
+  private cancelled = false;
   private intervalTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
@@ -26,6 +27,7 @@ export class EmbeddingWorker {
   }
 
   start(intervalMs: number = 60000): void {
+    this.cancelled = false;
     if (this.running) return;
     this.running = true;
     console.log(`EmbeddingWorker starting with interval ${intervalMs}ms, queue depth: ${this.getStatus().unembedded}`);
@@ -40,6 +42,7 @@ export class EmbeddingWorker {
   }
 
   stop(): void {
+    this.cancelled = true;
     if (this.intervalTimer) {
       clearInterval(this.intervalTimer);
       this.intervalTimer = null;
@@ -62,10 +65,18 @@ export class EmbeddingWorker {
     let processed = 0;
     let failed = 0;
 
-    for (let i = 0; i < rows.length; i += this.batch) {
-      const slice = rows.slice(i, i + this.batch);
-      const results = await Promise.allSettled(slice.map((r) => this.one(r)));
-      for (const r of results) r.status === "fulfilled" ? processed++ : failed++;
+    // Process one at a time, yielding after each. Local embedding inference is
+    // CPU-bound (no benefit from concurrency on a single JS thread), and yielding
+    // per embed keeps max request latency to ~one inference instead of a full batch.
+    for (const row of rows) {
+      if (this.cancelled) break;
+      try {
+        await this.one(row);
+        processed++;
+      } catch {
+        failed++;
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
     return { processed, failed };
   }

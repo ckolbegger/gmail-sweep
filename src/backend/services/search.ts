@@ -3,6 +3,11 @@ import { parseQuery, buildSqlFilters } from "./search-parser";
 import type { EmbedProvider } from "./embed-provider";
 import type { LLMProvider, ParsedQuery } from "../llm/provider";
 
+// Upper bound on the LLM query-parse round trip. If the proxy is slow or
+// unreachable we give up and fall back to direct vector search on the raw query
+// rather than hanging the /search request indefinitely.
+const DEFAULT_LLM_PARSE_TIMEOUT_MS = 5000;
+
 export interface SearchResult {
   id: string;
   thread_id: string;
@@ -20,8 +25,25 @@ export class SearchService {
   constructor(
     private db: Database,
     private embeddingProvider?: EmbedProvider,
-    private llmProvider?: LLMProvider
+    private llmProvider?: LLMProvider,
+    private opts: { llmParseTimeoutMs?: number } = {}
   ) {}
+
+  private withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error(`LLM parseSearchQuery timed out after ${ms}ms`)), ms);
+      p.then(
+        (v) => {
+          clearTimeout(t);
+          resolve(v);
+        },
+        (e) => {
+          clearTimeout(t);
+          reject(e);
+        }
+      );
+    });
+  }
 
   async search(query: string, limit: number = 50): Promise<SearchResult[]> {
     const parsed = parseQuery(query);
@@ -40,7 +62,10 @@ export class SearchService {
     // No operators — try LLM parser if available
     if (this.llmProvider) {
       try {
-        const llmParsed = await this.llmProvider.parseSearchQuery(query);
+        const llmParsed = await this.withTimeout(
+          this.llmProvider.parseSearchQuery(query),
+          this.opts.llmParseTimeoutMs ?? DEFAULT_LLM_PARSE_TIMEOUT_MS
+        );
         const { where: llmWhere, params: llmParams } = this.buildLlmSqlFilters(llmParsed);
         const combinedWhere = [where, llmWhere].filter(Boolean).join(" AND ");
         const combinedParams = [...params, ...llmParams];

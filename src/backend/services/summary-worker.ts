@@ -85,6 +85,17 @@ export class SummaryWorker {
     return row?.c ?? 0;
   }
 
+  getProcessedCount(): number {
+    const row = this.db
+      .query("SELECT COUNT(*) as c FROM emails WHERE ai_status = 'done'")
+      .get() as any;
+    return row?.c ?? 0;
+  }
+
+  isRunning(): boolean {
+    return this.running;
+  }
+
   start(intervalMs: number = 30000): void {
     if (this.running) return;
     this.running = true;

@@ -3,6 +3,8 @@ node_modules/
 dist/
 *.db
 *.db-journal
+*.db-shm
+*.db-wal
 config.toml
 credentials.json
 token.json

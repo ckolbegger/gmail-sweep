@@ -11,6 +11,7 @@ import { SummaryWorker } from "./services/summary-worker";
 import { SyncService } from "./services/sync";
 import { AutoPoller } from "./services/auto-poller";
 import { createApp } from "./server";
+import { startBackgroundWorkers } from "./bootstrap";
 import { createEmbedProvider } from "./services/embed-provider";
 import { EmbeddingWorker } from "./services/embedding-worker";
 
@@ -104,8 +105,8 @@ if (gmailAdapter && config.sync.poll_interval_seconds > 0) {
   console.log(`Auto-polling every ${config.sync.poll_interval_seconds}s`);
 }
 
-// Start summary worker
-summaryWorker.start(60000);
+// Start background workers (summary + embeddings)
+startBackgroundWorkers({ summaryWorker, embeddingWorker }, 60_000);
 console.log(`Starting Gmail Sweep backend on ${config.server.host}:${config.server.port}`);
 
 import { serve } from "bun";

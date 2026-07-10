@@ -56,3 +56,41 @@ describe("GET /embeddings/status", () => {
     expect(body.unembedded).toBe(0);
   });
 });
+
+describe("POST /embeddings/stop and /embeddings/start", () => {
+  let db: Database;
+
+  beforeEach(() => {
+    db = new Database(":memory:");
+    loadVecExtension(db);
+    db.run("CREATE TABLE IF NOT EXISTS emails (id TEXT PRIMARY KEY, subject TEXT, body_text TEXT, body_html TEXT DEFAULT '', date_received INTEGER, date_sent INTEGER DEFAULT 0, thread_id TEXT DEFAULT '', sender TEXT DEFAULT '', recipients TEXT DEFAULT '[]', labels TEXT DEFAULT '[]', is_read INTEGER DEFAULT 0, is_starred INTEGER DEFAULT 0, fetched_at INTEGER DEFAULT 0)");
+    db.run("CREATE VIRTUAL TABLE IF NOT EXISTS vec_embeddings USING vec0(embedding float[4] distance_metric=cosine, +email_id TEXT)");
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it("POST /embeddings/stop halts the worker", async () => {
+    const embeddingWorker = new EmbeddingWorker(db, mockProvider, strategy, 4);
+    const app = createApp({ db, embeddingWorker });
+    embeddingWorker.start(60_000);
+
+    const res = await app.request("/embeddings/stop", { method: "POST" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBe("stopped");
+  });
+
+  it("POST /embeddings/start (re)starts the worker", async () => {
+    const embeddingWorker = new EmbeddingWorker(db, mockProvider, strategy, 4);
+    const app = createApp({ db, embeddingWorker });
+
+    const res = await app.request("/embeddings/start", { method: "POST" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBe("started");
+
+    embeddingWorker.stop();
+  });
+});
