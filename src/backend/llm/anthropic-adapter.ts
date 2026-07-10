@@ -1,6 +1,10 @@
 import type { LLMProvider, SummaryResult, ParsedQuery } from "./provider";
 import { buildSummaryPrompt } from "./prompt";
 
+// LAN proxy (LMStudio) requires max_tokens >= 2048; below that it returns empty
+// content for some prompts, so both endpoints use this floor.
+const MAX_TOKENS = 2048;
+
 export class AnthropicAdapter implements LLMProvider {
   private baseUrl: string;
   private apiKey: string;
@@ -21,7 +25,7 @@ export class AnthropicAdapter implements LLMProvider {
 
     const requestBody = {
       model: this.model,
-      max_tokens: 2048,
+      max_tokens: MAX_TOKENS,
       system,
       messages: [{ role: "user", content: user }],
     };
@@ -82,7 +86,7 @@ Query: "${query}"`;
 
     const requestBody = {
       model: this.model,
-      max_tokens: 2048,
+      max_tokens: MAX_TOKENS,
       system: "You parse email search queries into structured JSON. Return ONLY valid JSON, no other text.",
       messages: [{ role: "user", content: prompt }],
     };
