@@ -101,4 +101,26 @@ describe("EmbeddingWorker with vec0", () => {
     expect(r.failed).toBe(1);
     expect(r.processed).toBe(1);
   });
+
+  test("stop() cancels an in-flight processPending batch", async () => {
+    for (let i = 0; i < 40; i++) {
+      db.run(
+        `INSERT INTO emails (id, thread_id, sender, subject, body_text, ai_status, date_received, recipients, labels)
+         VALUES ('e${i}','t','s','hi','body','done',1,'[]','[]')`
+      );
+    }
+    const slow = {
+      embedDocument: async () => {
+        await new Promise((r) => setTimeout(r, 15));
+        return new Array(1024).fill(0).map((_, i) => (i === 0 ? 1 : 0));
+      },
+      embedQuery: async () => new Array(1024).fill(0),
+    };
+    const w = new EmbeddingWorker(db, slow as any, defaultStrategy, 1024, 4);
+    const p = w.processPending();
+    w.stop();
+    const r = await p;
+    // Cancellation lands after the first slice; the whole batch is not processed.
+    expect(r.processed + r.failed).toBeLessThan(40);
+  });
 });

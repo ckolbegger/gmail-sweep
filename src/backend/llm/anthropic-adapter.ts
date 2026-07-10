@@ -21,7 +21,7 @@ export class AnthropicAdapter implements LLMProvider {
 
     const requestBody = {
       model: this.model,
-      max_tokens: 1024,
+      max_tokens: 2048,
       system,
       messages: [{ role: "user", content: user }],
     };
@@ -82,7 +82,7 @@ Query: "${query}"`;
 
     const requestBody = {
       model: this.model,
-      max_tokens: 512,
+      max_tokens: 2048,
       system: "You parse email search queries into structured JSON. Return ONLY valid JSON, no other text.",
       messages: [{ role: "user", content: prompt }],
     };

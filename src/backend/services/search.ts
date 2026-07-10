@@ -20,7 +20,8 @@ export class SearchService {
   constructor(
     private db: Database,
     private embeddingProvider?: EmbedProvider,
-    private llmProvider?: LLMProvider
+    private llmProvider?: LLMProvider,
+    private llmTimeoutMs: number = 10000
   ) {}
 
   async search(query: string, limit: number = 50): Promise<SearchResult[]> {
@@ -40,7 +41,11 @@ export class SearchService {
     // No operators — try LLM parser if available
     if (this.llmProvider) {
       try {
-        const llmParsed = await this.llmProvider.parseSearchQuery(query);
+        // Race the LLM against a timeout: the LAN proxy can hang for tens of
+        // seconds on a cold model load, and without a bound the whole search
+        // request hangs forever. On timeout we throw and fall through to a
+        // direct vector search on the raw free text.
+        const llmParsed = await this.withLlmTimeout(this.llmProvider.parseSearchQuery(query));
         const { where: llmWhere, params: llmParams } = this.buildLlmSqlFilters(llmParsed);
         const combinedWhere = [where, llmWhere].filter(Boolean).join(" AND ");
         const combinedParams = [...params, ...llmParams];
@@ -62,6 +67,16 @@ export class SearchService {
     }
 
     return this.vectorSearch(parsed.freeText, where, params, limit);
+  }
+
+  private withLlmTimeout<T>(p: Promise<T>): Promise<T> {
+    if (this.llmTimeoutMs <= 0) return p;
+    return Promise.race([
+      p,
+      new Promise<T>((_, reject) =>
+        setTimeout(() => reject(new Error("LLM parseSearchQuery timeout")), this.llmTimeoutMs)
+      ),
+    ]);
   }
 
   private buildLlmSqlFilters(llmParsed: ParsedQuery): { where: string; params: any[] } {

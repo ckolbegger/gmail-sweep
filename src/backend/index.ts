@@ -13,6 +13,7 @@ import { AutoPoller } from "./services/auto-poller";
 import { createApp } from "./server";
 import { createEmbedProvider } from "./services/embed-provider";
 import { EmbeddingWorker } from "./services/embedding-worker";
+import { startBackgroundWorkers } from "./start-workers";
 
 function expandPath(p: string): string {
   return p.startsWith("~") ? resolve(homedir(), p.slice(1)) : p;
@@ -104,8 +105,10 @@ if (gmailAdapter && config.sync.poll_interval_seconds > 0) {
   console.log(`Auto-polling every ${config.sync.poll_interval_seconds}s`);
 }
 
-// Start summary worker
-summaryWorker.start(60000);
+// Start background workers — periodic summary + embedding processing.
+// EmbeddingWorker must start here too: sync triggers only invoke it when new mail
+// is fetched, so without this the backlog of summarized emails never gets embedded.
+startBackgroundWorkers({ summaryWorker, embeddingWorker }, 60000);
 console.log(`Starting Gmail Sweep backend on ${config.server.host}:${config.server.port}`);
 
 import { serve } from "bun";

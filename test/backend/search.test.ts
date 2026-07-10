@@ -233,4 +233,17 @@ describe("SearchService", () => {
       expect(results.length).toBe(1);
     });
   });
+
+  describe("LLM search fallback", () => {
+    it("falls back to vector search when LLM parseSearchQuery hangs", async () => {
+      seedVecEmbedding(db, "e1", [1, 0, 0, 0]);
+      const hangingLlm = { parseSearchQuery: () => new Promise(() => {}) } as any;
+      const provider = mockEmbedProvider([1, 0, 0, 0]);
+      const service = new SearchService(db, provider, hangingLlm, 50);
+      const results = await service.search("meeting");
+      expect(results.length).toBe(1);
+      expect(results[0].id).toBe("e1");
+      expect(results[0].score).not.toBeNull();
+    }, 3000);
+  });
 });

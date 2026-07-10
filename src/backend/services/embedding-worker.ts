@@ -5,6 +5,7 @@ import { buildEmbeddingText } from "./extraction-strategies";
 
 export class EmbeddingWorker {
   private running = false;
+  private cancelled = false;
   private intervalTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
@@ -28,6 +29,7 @@ export class EmbeddingWorker {
   start(intervalMs: number = 60000): void {
     if (this.running) return;
     this.running = true;
+    this.cancelled = false;
     console.log(`EmbeddingWorker starting with interval ${intervalMs}ms, queue depth: ${this.getStatus().unembedded}`);
     this.intervalTimer = setInterval(() => {
       this.processPending().catch((err) => {
@@ -40,6 +42,7 @@ export class EmbeddingWorker {
   }
 
   stop(): void {
+    this.cancelled = true;
     if (this.intervalTimer) {
       clearInterval(this.intervalTimer);
       this.intervalTimer = null;
@@ -62,10 +65,18 @@ export class EmbeddingWorker {
     let processed = 0;
     let failed = 0;
 
-    for (let i = 0; i < rows.length; i += this.batch) {
-      const slice = rows.slice(i, i + this.batch);
-      const results = await Promise.allSettled(slice.map((r) => this.one(r)));
-      for (const r of results) r.status === "fulfilled" ? processed++ : failed++;
+    for (const row of rows) {
+      if (this.cancelled) break;
+      try {
+        await this.one(row);
+        processed++;
+      } catch {
+        failed++;
+      }
+      // Yield to the event loop after each embed so HTTP requests (including
+      // /embeddings/stop) can be serviced. Local model inference is CPU-bound
+      // and would otherwise starve the server for the whole batch.
+      await new Promise((r) => setTimeout(r, 0));
     }
     return { processed, failed };
   }
