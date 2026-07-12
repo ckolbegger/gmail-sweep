@@ -1,7 +1,7 @@
 import type Database from "bun:sqlite";
 import type { EmbedProvider } from "./embed-provider";
 import type { ExtractionStrategy } from "../../shared/types";
-import { buildEmbeddingText } from "./extraction-strategies";
+import { chunkEmail } from "./chunker";
 
 export class EmbeddingWorker {
   private running = false;
@@ -82,17 +82,27 @@ export class EmbeddingWorker {
   }
 
   private async one(row: { id: string; subject: string; body_text: string | null }): Promise<void> {
-    const text = buildEmbeddingText({ subject: row.subject ?? "", bodyText: row.body_text ?? "" }, this.strategy);
-    const vec = await this.provider.embedDocument(text);
-    if (vec.length !== this.dimension) {
-      throw new Error(`embedding dimension ${vec.length} != configured ${this.dimension}`);
+    const texts = chunkEmail({ subject: row.subject ?? "", bodyText: row.body_text ?? "" }, this.strategy);
+    const bufs: Buffer[] = [];
+    for (const text of texts) {
+      if (this.cancelled) throw new Error("EmbeddingWorker cancelled");
+      const vec = await this.provider.embedDocument(text);
+      if (vec.length !== this.dimension) {
+        throw new Error(`embedding dimension ${vec.length} != configured ${this.dimension}`);
+      }
+      bufs.push(Buffer.from(new Float32Array(vec).buffer));
+      // Yield per chunk so HTTP requests (incl. /embeddings/stop) stay serviceable
+      // during local CPU-bound inference.
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
-    const buf = Buffer.from(new Float32Array(vec).buffer);
-    // vec0 has no ON CONFLICT; delete-then-insert in a transaction.
-    const tx = this.db.transaction((id: string, b: Buffer) => {
+    // vec0 has no ON CONFLICT; delete-then-insert all chunks atomically so an
+    // email is either fully embedded or not at all (no partial rows on failure).
+    const tx = this.db.transaction((id: string, buffers: Buffer[]) => {
       this.db.run("DELETE FROM vec_embeddings WHERE email_id = ?", [id]);
-      this.db.run("INSERT INTO vec_embeddings(email_id, embedding) VALUES (?, ?)", [id, b]);
+      for (const b of buffers) {
+        this.db.run("INSERT INTO vec_embeddings(email_id, embedding) VALUES (?, ?)", [id, b]);
+      }
     });
-    tx(row.id, buf);
+    tx(row.id, bufs);
   }
 }

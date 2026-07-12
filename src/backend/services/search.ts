@@ -8,6 +8,28 @@ import type { LLMProvider, ParsedQuery } from "../llm/provider";
 // rather than hanging the /search request indefinitely.
 const DEFAULT_LLM_PARSE_TIMEOUT_MS = 5000;
 
+// KNN over-fetch window for vector search. Each email has N chunk rows, so we
+// fetch a wide window, collapse to the best chunk per email, then take `limit`.
+const KNN_OVERFETCH_MULTIPLIER = 20;
+const KNN_MIN_K = 100;
+const KNN_MAX_K = 1000;
+
+/**
+ * Collapse KNN rows (one per chunk) to the best chunk per email. vec0 cosine
+ * distance is lower-closer, so the minimum distance per email_id is the best
+ * match. Pure: no DB, no async.
+ */
+export function bestChunkPerEmail(
+  rows: { email_id: string; distance: number }[]
+): Map<string, number> {
+  const best = new Map<string, number>();
+  for (const r of rows) {
+    const cur = best.get(r.email_id);
+    if (cur === undefined || r.distance < cur) best.set(r.email_id, r.distance);
+  }
+  return best;
+}
+
 export interface SearchResult {
   id: string;
   thread_id: string;
@@ -171,15 +193,15 @@ export class SearchService {
     const qvec = await this.embeddingProvider!.embedQuery(freeText);
     const qbuf = Buffer.from(new Float32Array(qvec).buffer);
 
-    // Pull top-K nearest from vec0, then inner-join with SQL filters
-    const k = Math.min(Math.max(limit * 10, 50), 500);
+    // Over-fetch (emails have N chunk rows), collapse to best chunk, take `limit`.
+    const k = Math.min(Math.max(limit * KNN_OVERFETCH_MULTIPLIER, KNN_MIN_K), KNN_MAX_K);
     const knn = this.db
       .query("SELECT email_id, distance FROM vec_embeddings WHERE embedding MATCH ? AND k = ? ORDER BY distance")
       .all(qbuf, k) as Array<{ email_id: string; distance: number }>;
 
     if (knn.length === 0) return [];
-    const ids = knn.map((r) => r.email_id);
-    const distMap = new Map(knn.map((r) => [r.email_id, r.distance]));
+    const distMap = bestChunkPerEmail(knn);
+    const ids = [...distMap.keys()];
 
     const placeholders = ids.map(() => "?").join(",");
     const whereClause = where ? `(${where}) AND id IN (${placeholders})` : `id IN (${placeholders})`;
